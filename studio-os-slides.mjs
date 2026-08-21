@@ -382,7 +382,7 @@ export const STUDIO_OS_CSS = `
   gap: var(--cd-proven-gap);
   align-items: stretch;
   width: 100%;
-  margin-top: 48px;
+  margin-top: 108px;
 }
 .cd-studio-statStack,
 .cd-studio-quotes {

@@ -242,12 +242,54 @@ const HIDE_CHROME = `
   .cad--typesOnly .cad-cSpan {
     display: none !important;
   }
+  /* +20% size for Campaign Types list */
+  .cad--typesOnly .cad-result {
+    max-width: 1224px !important;
+  }
+  .cad--typesOnly .cad-top {
+    margin-bottom: 17px !important;
+  }
+  .cad--typesOnly .cad-eyebrow {
+    font-size: calc(var(--dpf-deck-eye-size, 14px) * 1.2) !important;
+  }
   .cad--typesOnly .cad-tHead,
   .cad--typesOnly .cad-tRow {
-    grid-template-columns: 28px minmax(0, 1fr) !important;
+    grid-template-columns: 34px minmax(0, 1fr) !important;
+    column-gap: 19px !important;
   }
   .cad--typesOnly .cad-tHead span:first-child {
     grid-column: 1 / 3;
+  }
+  .cad--typesOnly .cad-tHead {
+    padding: 0 26px 12px !important;
+    font-size: 15px !important;
+  }
+  .cad--typesOnly .cad-tRow {
+    padding: 10px 26px !important;
+  }
+  .cad--typesOnly.cad--dense .cad-tRow {
+    padding: 7px 26px !important;
+  }
+  .cad--typesOnly.cad--dense .cad-top {
+    margin-bottom: 12px !important;
+  }
+  .cad--typesOnly.cad--dense .cad-tHead {
+    padding-bottom: 8px !important;
+  }
+  .cad--typesOnly .cad-rowNum {
+    width: 34px !important;
+    height: 34px !important;
+    border-radius: 10px !important;
+    font-size: 14.4px !important;
+  }
+  .cad--typesOnly .cad-cType {
+    gap: 3px !important;
+  }
+  .cad--typesOnly .cad-cType b {
+    font-size: 18px !important;
+  }
+  .cad--typesOnly .cad-cType i {
+    font-size: 14.4px !important;
   }
   /* Closing block — single call recording link */
   .dpf-viniDoV2--singleLink .dpf-viniDoV2-inner {

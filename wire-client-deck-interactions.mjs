@@ -368,6 +368,9 @@ const INTERACTIVITY_JS = `
     host.addEventListener('click', stopDeckNav);
     var root = host.firstElementChild;
     if (!root) return true;
+    if (window.__deckRefreshMetricOverlay && /cold_leads_calc_open|service_customers_calc_open/.test(cta)) {
+      try { window.__deckRefreshMetricOverlay(root); } catch (err) {}
+    }
     root.addEventListener('click', function (e) {
       if (e.target === root) closeOverlay();
     });

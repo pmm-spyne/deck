@@ -546,27 +546,282 @@ function computePricingPayback(pricing, assumptions = {}) {
     var m = Math.max(0, Math.round(Number(mid) || 0));
     var delta = m > 0 ? Math.max(50, Math.round(m / 6 / 50) * 50) : 0;
     var lo = Math.max(0, m - delta);
-    return { lo: lo, plusLabel: formatPlusFloorCount(lo) };
+    var hi = m + delta;
+    return {
+      mid: m,
+      lo: lo,
+      hi: hi,
+      delta: delta,
+      shown: floorToNiceZeros(lo),
+      plusLabel: formatPlusFloorCount(lo),
+    };
+  }
+
+  function formatLeadCount(n) {
+    var r = Math.round(Number(n) || 0);
+    if (!isFinite(r)) return '—';
+    return r.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  }
+
+  function compactLeadK(n) {
+    var shown = Math.max(0, Math.round(Number(n) || 0));
+    if (shown >= 1000) return Math.round(shown / 1000).toLocaleString('en-US') + 'K';
+    return formatLeadCount(shown);
+  }
+
+  function salesApptsRangeFromMid(midpoint) {
+    var mid = Math.max(0, Math.round(Number(midpoint) || 0));
+    var delta = mid <= 15 ? 1 : mid <= 35 ? 3 : mid <= 70 ? 6 : 9;
+    var lo = Math.max(0, mid - delta);
+    var hi = mid + delta;
+    return {
+      lo: lo,
+      hi: hi,
+      mid: mid,
+      label: lo === hi ? formatLeadCount(lo) : (formatLeadCount(lo) + '\u2013' + formatLeadCount(hi)),
+    };
+  }
+
+  /** Baseline CRM book — keep in sync with CrmAnalysisDeck.jsx */
+  var CRM_BASE_UNIVERSE = 27400;
+  var CRM_SALES_OUTBOUND_FACTOR = 0.8;
+  var CRM_BASE_APPTS_YR = Math.round(216 * CRM_SALES_OUTBOUND_FACTOR);
+  var CRM_BASE_HOT_LEADS = Math.round(2160 * CRM_SALES_OUTBOUND_FACTOR);
+  var CRM_HOT_LEADS_PCT = 0.08;
+  var CRM_ADDITIONAL_HOT_PCT = 0.08;
+  var CRM_SALES_ROWS = [
+    { id: 'agedLead', label: 'Aged Lead Followups', leads: 18400, appts: 66, hotLeads: 660 },
+    { id: 'noShow', label: 'No-Show Recovery', leads: 3000, appts: 30, hotLeads: 300 },
+    { id: 'inventoryMatch', label: 'Inventory Match', leads: 3000, appts: 40, hotLeads: 400 },
+    { id: 'equityMining', label: 'Equity Mining', leads: 1000, appts: 30, hotLeads: 300 },
+    { id: 'leaseEnd', label: 'Lease-End Renewal', leads: 1000, appts: 30, hotLeads: 300 },
+    { id: 'buyback', label: 'Buy-Back / Repurchase', leads: 1000, appts: 20, hotLeads: 200 },
+  ];
+
+  function deriveDeckMetrics(cars, leadsPerCar) {
+    cars = Math.max(0, Math.min(50000, Math.round(Number(cars) || 0)));
+    leadsPerCar = Math.max(0, Math.round(Number(leadsPerCar) || 10));
+    var monthlyLeads = cars * leadsPerCar;
+    var sales = coldLeadsRangeFromMid(monthlyLeads * 36);
+    var service = coldLeadsRangeFromMid(cars * 36);
+    var salesShown = sales.shown;
+    var serviceShown = service.shown;
+    var scale = salesShown > 0 ? salesShown / CRM_BASE_UNIVERSE : 0;
+    var appts = salesApptsRangeFromMid(Math.max(0, Math.round(CRM_BASE_APPTS_YR * scale)));
+    var crmHot = Math.round(CRM_BASE_HOT_LEADS * scale);
+    var impactHot = Math.round(salesShown * CRM_HOT_LEADS_PCT);
+    return {
+      cars: cars,
+      leadsPerCar: leadsPerCar,
+      monthlyLeads: monthlyLeads,
+      sales: sales,
+      service: service,
+      salesShown: salesShown,
+      serviceShown: serviceShown,
+      scale: scale,
+      appts: appts,
+      crmHot: crmHot,
+      impactHot: impactHot,
+    };
   }
 
   function wireCarsSeamRecalc() {
     var LEADS_PER_CAR = 10;
     var liveT = null;
+    var lastCars = 200;
 
-    function updateHighlights(cars) {
-      cars = Math.max(0, Math.min(50000, Math.round(Number(cars) || 0)));
-      var salesMid = cars * LEADS_PER_CAR * 36;
-      var sales = coldLeadsRangeFromMid(salesMid);
-      var serviceMid = cars * 36;
-      var service = coldLeadsRangeFromMid(serviceMid);
+    function frameByLabel(label) {
+      return document.querySelector('.dpf-pitchDeck-frame [data-pitch-label="' + label + '"]')
+        || document.querySelector('[data-pitch-label="' + label + '"]');
+    }
 
-      document.querySelectorAll('.dpf-soSeam').forEach(function (seam) {
-        var isService = seam.classList.contains('dpf-soSeam--service') || seam.classList.contains('dpf-soSeam--serviceOutbound');
-        var range = isService ? service : sales;
-        var label = isService ? (range.plusLabel + ' customers') : (range.plusLabel + ' cold leads');
-        var hi = seam.querySelector('.dpf-soSeam-highlight');
-        if (hi) hi.textContent = label;
+    function syncCarInputs(cars, skipEl) {
+      document.querySelectorAll('.dpf-soSeam-carsInput, .dpf-soSeam-carsValue').forEach(function (inp) {
+        if (inp === skipEl || document.activeElement === inp) return;
+        if (inp.tagName === 'INPUT') inp.value = String(cars);
+        else inp.textContent = String(cars);
       });
+      var pricingRoot = document.querySelector('.dpf-pricing');
+      var pricingInput = pricingRoot && pricingRoot.querySelector('.dpf-pricing-carsInput');
+      if (pricingInput && pricingInput !== skipEl && document.activeElement !== pricingInput) {
+        pricingInput.value = String(cars);
+      }
+    }
+
+    function updateSeamHighlights(d) {
+      document.querySelectorAll('.dpf-soSeam').forEach(function (seam) {
+        // Only metric seams (have cars input) — never the "talk service" callout
+        if (!seam.querySelector('.dpf-soSeam-carsInput, .dpf-soSeam-carsValue, .dpf-soSeam-carsTxt')) return;
+        var isService = !!seam.querySelector('[data-demo-cta="service_customers_calc_open"]');
+        var hi = seam.querySelector('.dpf-soSeam-highlight');
+        if (!hi) return;
+        if (isService) {
+          hi.textContent = d.service.plusLabel + ' service customers';
+        } else {
+          hi.textContent = d.sales.plusLabel + ' cold leads';
+        }
+      });
+    }
+
+    function updateStorySlides(d) {
+      var outboundProblem = frameByLabel('Outbound problem');
+      if (outboundProblem) {
+        var hl = outboundProblem.querySelector('.dpf-sviProblem-hl');
+        if (hl) hl.textContent = compactLeadK(d.salesShown) + ' untouched leads';
+      }
+
+      var outboundSolution = frameByLabel('Outbound solution');
+      if (outboundSolution) {
+        outboundSolution.querySelectorAll('.dpf-sviProblem-issueTitle').forEach(function (el) {
+          if (/scans and analyses your/i.test(el.textContent) || /CRM leads/i.test(el.textContent)) {
+            el.textContent = 'Vini scans and analyses your ' + formatLeadCount(d.salesShown) + ' CRM leads';
+          }
+        });
+      }
+
+      var serviceProblem = frameByLabel('Service outbound problem');
+      if (serviceProblem) {
+        serviceProblem.querySelectorAll('.dpf-sviProblem-issueTitle').forEach(function (el) {
+          if (/higher-ticket/i.test(el.textContent) || /idle in your DMS/i.test(el.textContent)) {
+            el.textContent = 'You have ' + formatLeadCount(d.serviceShown) + ' potential higher-ticket leads idle in your DMS';
+          }
+        });
+      }
+    }
+
+    function updateCrmAnalysis(d) {
+      var slide = frameByLabel('CRM Analysis');
+      if (!slide) return;
+      var cad = slide.querySelector('.cad');
+      if (!cad) return;
+      var universe = Math.max(0, d.salesShown);
+      cad.setAttribute('data-cad-scan-target', String(universe || CRM_BASE_UNIVERSE));
+
+      var scanCount = cad.querySelector('.cad-scanCount');
+      if (scanCount) {
+        var val = scanCount.querySelector('.cad-scanCountVal');
+        var current = val ? val.textContent : '0';
+        scanCount.innerHTML = '<b class="cad-scanCountVal">' + current + '</b> of ' + formatLeadCount(universe) + ' leads scanned';
+      }
+
+      cad.querySelectorAll('.cad-stat').forEach(function (stat) {
+        var labelEl = stat.querySelector('.l');
+        var valEl = stat.querySelector('.v');
+        if (!labelEl || !valEl) return;
+        var label = (labelEl.textContent || '').trim();
+        if (/Lead universe/i.test(label)) valEl.textContent = formatLeadCount(universe);
+        else if (/Potential appointments/i.test(label)) valEl.textContent = d.appts.label;
+        else if (/Hot leads/i.test(label)) valEl.textContent = formatLeadCount(d.crmHot);
+      });
+
+      var scale = d.scale;
+      cad.querySelectorAll('.cad-tRow').forEach(function (row) {
+        var type = row.querySelector('.cad-cType b');
+        if (!type) return;
+        var name = (type.textContent || '').trim();
+        var base = CRM_SALES_ROWS.find(function (r) { return r.label === name; });
+        if (!base || base.leads == null) return;
+        var leadsLive = Math.round(base.leads * scale * CRM_SALES_OUTBOUND_FACTOR);
+        var hotLive = base.hotLeads != null
+          ? Math.round(base.hotLeads * scale * CRM_SALES_OUTBOUND_FACTOR)
+          : Math.round(leadsLive * CRM_ADDITIONAL_HOT_PCT);
+        var apptsMid = base.appts != null
+          ? Math.round(base.appts * scale * CRM_SALES_OUTBOUND_FACTOR)
+          : Math.max(1, Math.round(leadsLive * ((1 / 100) * 12) / 36));
+        var appts = salesApptsRangeFromMid(Math.max(1, apptsMid));
+        var cells = row.querySelectorAll('.cad-cNum');
+        if (cells[0]) cells[0].textContent = formatLeadCount(leadsLive);
+        if (cells[1]) cells[1].textContent = appts.label;
+        if (cells[2]) cells[2].textContent = formatLeadCount(hotLive);
+      });
+    }
+
+    function updateImpact(d) {
+      var slide = frameByLabel('Impact');
+      if (!slide) return;
+      var lead = slide.querySelector('.dpf-soRoi-lead');
+      if (lead) lead.textContent = 'For ' + formatLeadCount(d.salesShown) + ' leads, Vini Sales Outbound delivers';
+      var num = slide.querySelector('.dpf-soRoi-num');
+      if (num) num.textContent = d.appts.label;
+      var bonus = slide.querySelector('.dpf-soRoi-bonusNum');
+      if (bonus) bonus.textContent = '+' + formatLeadCount(d.impactHot);
+    }
+
+    function patchMetricOverlay(root, d) {
+      if (!root) return;
+      var title = (root.querySelector('.dpf-coldLeadsExplain-title') || {}).textContent || '';
+      var isService = /service customers/i.test(title);
+      var range = isService ? d.service : d.sales;
+      var cars = d.cars;
+      var monthly = isService ? cars : d.monthlyLeads;
+      var mid = range.mid;
+      var delta = range.delta;
+
+      var dds = root.querySelectorAll('.dpf-coldLeadsExplain-inputRow dd');
+      if (dds[0]) dds[0].textContent = formatLeadCount(cars);
+      if (!isService && dds[1]) dds[1].textContent = String(d.leadsPerCar);
+
+      var steps = root.querySelectorAll('.dpf-coldLeadsExplain-step');
+      if (isService) {
+        if (steps[0]) {
+          var hl0 = steps[0].querySelector('.dpf-coldLeadsExplain-stepHl');
+          if (hl0) hl0.textContent = formatLeadCount(cars) + ' cars/mo';
+        }
+        if (steps[1]) {
+          var val1 = steps[1].querySelector('.dpf-coldLeadsExplain-stepVal');
+          if (val1) {
+            val1.innerHTML = formatLeadCount(cars) + ' × 36 months = <span class="dpf-coldLeadsExplain-stepHl">'
+              + formatLeadCount(mid) + ' customers</span>';
+          }
+        }
+      } else {
+        if (steps[0]) {
+          var val0 = steps[0].querySelector('.dpf-coldLeadsExplain-stepVal');
+          if (val0) {
+            val0.innerHTML = formatLeadCount(cars) + ' × ' + d.leadsPerCar + ' = <span class="dpf-coldLeadsExplain-stepHl">'
+              + formatLeadCount(monthly) + ' leads/mo</span>';
+          }
+        }
+        if (steps[1]) {
+          var val1b = steps[1].querySelector('.dpf-coldLeadsExplain-stepVal');
+          if (val1b) {
+            val1b.innerHTML = formatLeadCount(monthly) + ' × 36 months = <span class="dpf-coldLeadsExplain-stepHl">'
+              + formatLeadCount(mid) + ' leads</span>';
+          }
+        }
+      }
+      if (steps[2]) {
+        var hl2 = steps[2].querySelector('.dpf-coldLeadsExplain-stepHl');
+        if (hl2) hl2.textContent = '\u00b1' + formatLeadCount(delta);
+      }
+      var result = root.querySelector('.dpf-coldLeadsExplain-resultVal');
+      if (result) {
+        var suffix = result.querySelector('span');
+        var suffixText = suffix
+          ? suffix.textContent
+          : (isService ? 'service customers sitting in your CRM' : 'cold leads sitting in your CRM');
+        result.innerHTML = range.plusLabel + ' <span>' + suffixText + '</span>';
+      }
+    }
+
+    function refreshOpenOverlays(d) {
+      document.querySelectorAll('.client-deck-overlayHost .dpf-coldLeadsExplain-modal, .dpf-coldLeadsExplain-modal').forEach(function (modal) {
+        patchMetricOverlay(modal, d);
+      });
+    }
+
+    function updateDerived(cars, opts) {
+      opts = opts || {};
+      var d = deriveDeckMetrics(cars, LEADS_PER_CAR);
+      lastCars = d.cars;
+      updateSeamHighlights(d);
+      if (!opts.highlightsOnly) {
+        updateStorySlides(d);
+        updateCrmAnalysis(d);
+        updateImpact(d);
+        refreshOpenOverlays(d);
+      }
+      return d;
     }
 
     function applyCars(cars, opts) {
@@ -575,19 +830,15 @@ function computePricingPayback(pricing, assumptions = {}) {
       cars = Math.max(live ? 0 : 1, Math.min(50000, Math.round(Number(cars) || 0)));
       if (!live && cars < 1) cars = 200;
 
-      updateHighlights(cars);
+      if (live) {
+        updateDerived(cars, { highlightsOnly: true });
+        return;
+      }
 
-      if (!live) {
-        document.querySelectorAll('.dpf-soSeam').forEach(function (seam) {
-          var inp = seam.querySelector('.dpf-soSeam-carsInput, .dpf-soSeam-carsValue');
-          if (!inp) return;
-          if (inp.tagName === 'INPUT') {
-            if (document.activeElement !== inp) inp.value = String(cars);
-          } else {
-            inp.textContent = String(cars);
-          }
-        });
+      syncCarInputs(cars, opts.skipEl);
+      updateDerived(cars);
 
+      if (!opts.skipPricing) {
         var pricingRoot = document.querySelector('.dpf-pricing');
         if (pricingRoot && pricingRoot.__deckPricing) {
           pricingRoot.__deckPricing.setCars(Math.max(1, cars), true);
@@ -595,7 +846,13 @@ function computePricingPayback(pricing, assumptions = {}) {
       }
     }
 
-    window.__deckApplyCarsSeam = function (cars) { applyCars(cars, { live: false }); };
+    window.__deckApplyCarsSeam = function (cars, opts) {
+      applyCars(cars, opts || { live: false });
+    };
+    window.__deckRefreshMetricOverlay = function (root) {
+      patchMetricOverlay(root, deriveDeckMetrics(lastCars, LEADS_PER_CAR));
+    };
+    window.__deckGetCarsSeam = function () { return lastCars; };
 
     function readCarsFromInput(el) {
       return parseInt(String(el && el.value || '').replace(/[^0-9]/g, ''), 10) || 0;
@@ -603,34 +860,53 @@ function computePricingPayback(pricing, assumptions = {}) {
 
     document.addEventListener('input', function (e) {
       var t = e.target;
-      if (!t || !t.classList || !t.classList.contains('dpf-soSeam-carsInput')) return;
+      if (!t || !t.classList) return;
+      var fromSeam = t.classList.contains('dpf-soSeam-carsInput');
+      var fromPricing = t.classList.contains('dpf-pricing-carsInput');
+      if (!fromSeam && !fromPricing) return;
       var n = readCarsFromInput(t);
       clearTimeout(liveT);
-      // Update highlight immediately while typing
-      updateHighlights(n);
-      // Light debounce for cross-slide / pricing sync
+      updateDerived(n, { highlightsOnly: false });
       liveT = setTimeout(function () {
-        if (n > 0) applyCars(n, { live: false });
-      }, 180);
+        if (n > 0) applyCars(n, { live: false, skipEl: t, skipPricing: fromPricing });
+      }, 160);
     }, true);
 
     document.addEventListener('blur', function (e) {
       var t = e.target;
-      if (!t || !t.classList || !t.classList.contains('dpf-soSeam-carsInput')) return;
+      if (!t || !t.classList) return;
+      var fromSeam = t.classList.contains('dpf-soSeam-carsInput');
+      var fromPricing = t.classList.contains('dpf-pricing-carsInput');
+      if (!fromSeam && !fromPricing) return;
       clearTimeout(liveT);
       var n = readCarsFromInput(t);
-      if (!n) n = 200;
-      applyCars(n, { live: false });
+      if (!n) n = fromPricing ? 100 : 200;
+      applyCars(n, { live: false, skipEl: t, skipPricing: fromPricing });
+      if (fromPricing) {
+        var pricingRoot = document.querySelector('.dpf-pricing');
+        if (pricingRoot && pricingRoot.__deckPricing) {
+          pricingRoot.__deckPricing.setCars(n, true);
+        }
+      }
     }, true);
 
     document.addEventListener('keydown', function (e) {
       var t = e.target;
-      if (!t || !t.classList || !t.classList.contains('dpf-soSeam-carsInput')) return;
+      if (!t || !t.classList) return;
+      if (!t.classList.contains('dpf-soSeam-carsInput') && !t.classList.contains('dpf-pricing-carsInput')) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         t.blur();
       }
     }, true);
+
+    // Initial sync so all slides share the default book
+    setTimeout(function () {
+      var seed = 200;
+      var first = document.querySelector('.dpf-soSeam-carsInput, .dpf-pricing-carsInput');
+      if (first) seed = readCarsFromInput(first) || 200;
+      applyCars(seed, { live: false });
+    }, 0);
   }
 
   function wirePricing() {
@@ -803,13 +1079,14 @@ function computePricingPayback(pricing, assumptions = {}) {
       carsInput.addEventListener('keydown', function (e) { e.stopPropagation(); });
       carsInput.addEventListener('input', function () {
         var n = parseInt(String(carsInput.value).replace(/\D/g, ''), 10) || 0;
-        state.cars = n;
+        state.cars = n || state.cars;
         render();
+        // Live deck-wide sync is handled by wireCarsSeamRecalc input listener
       });
       carsInput.addEventListener('blur', function () {
         if (!state.cars) state.cars = 100;
         render();
-        if (window.__deckApplyCarsSeam) window.__deckApplyCarsSeam(state.cars);
+        if (window.__deckApplyCarsSeam) window.__deckApplyCarsSeam(state.cars, { skipPricing: true });
       });
     }
 
