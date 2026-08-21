@@ -76,10 +76,10 @@ const HIDE_CHROME = `
     background: #525659 !important;
     /* Do NOT set overflow-x:hidden on html/body — breaks iOS momentum scroll */
     overflow-y: scroll !important;
-    overflow-x: auto !important;
+    overflow-x: scroll !important;
     -webkit-overflow-scrolling: touch;
-    overscroll-behavior-y: auto;
-    touch-action: pan-y pinch-zoom;
+    overscroll-behavior: auto;
+    touch-action: pan-x pan-y pinch-zoom;
     scroll-snap-type: none;
   }
   html[data-deck-mode="pdf"] body {
@@ -89,7 +89,7 @@ const HIDE_CHROME = `
     padding: 0 !important;
     overflow: visible !important;
     background: #525659 !important;
-    touch-action: pan-y pinch-zoom;
+    touch-action: pan-x pan-y pinch-zoom;
   }
   html[data-deck-mode="pdf"] .dpf-pitchDeck {
     position: relative !important;
@@ -100,22 +100,22 @@ const HIDE_CHROME = `
     min-height: 0 !important;
     margin: 0 auto;
     background: #525659 !important;
-    padding: 12px 0 calc(72px + env(safe-area-inset-bottom, 0px)) !important;
+    padding: 8px 0 calc(48px + env(safe-area-inset-bottom, 0px)) !important;
     box-sizing: border-box;
     overflow: visible !important;
-    touch-action: pan-y pinch-zoom;
+    touch-action: pan-x pan-y pinch-zoom;
   }
   html[data-deck-mode="pdf"] .dpf-pitchDeck-stage {
     position: relative !important;
     display: flex !important;
     flex-direction: column !important;
     align-items: center !important;
-    gap: 12px !important;
+    gap: 8px !important;
     width: 1920px !important;
     height: auto !important;
     overflow: visible !important;
     background: transparent !important;
-    touch-action: pan-y pinch-zoom;
+    touch-action: pan-x pan-y pinch-zoom;
   }
   html[data-deck-mode="pdf"] .dpf-pitchDeck-frame,
   html[data-deck-mode="pdf"] .dpf-pitchDeck-frame.is-on {
@@ -133,90 +133,69 @@ const HIDE_CHROME = `
     background: #fff !important;
     box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
     flex: 0 0 auto !important;
-    transition: box-shadow 0.18s ease, outline-color 0.18s ease;
-    touch-action: pan-y pinch-zoom;
+    transition: none !important;
+    touch-action: pan-x pan-y pinch-zoom;
   }
   html[data-deck-mode="pdf"] .dpf-pitchDeck-frame > .dpf-pitchSlide {
     width: 1920px !important;
     height: 1080px !important;
-    touch-action: pan-y pinch-zoom;
+    touch-action: pan-x pan-y pinch-zoom;
   }
-  /* Default: clip tall slides so one-finger page scroll stays easy */
+  /* Default: clip tall slides — deck browse only until zoomed */
   html[data-deck-mode="pdf"] .dpf-pitchSlide--scroll {
     overflow: hidden !important;
   }
-  /* Tap-selected tall slide: finger scrolls inside the slide */
-  html[data-deck-mode="pdf"] .dpf-pitchDeck-frame.is-pdf-can-scroll:not(.is-pdf-focused)::after {
-    content: "Tap to scroll slide";
-    position: absolute;
-    left: 50%;
-    bottom: 28px;
-    transform: translateX(-50%);
-    z-index: 5;
-    padding: 10px 18px;
-    border-radius: 999px;
-    background: rgba(20, 18, 26, 0.78);
-    color: #fff;
-    font: 600 22px/1.2 "Plus Jakarta Sans", Inter, system-ui, sans-serif;
-    letter-spacing: 0.02em;
-    pointer-events: none;
-    white-space: nowrap;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
-  }
-  html[data-deck-mode="pdf"] .dpf-pitchDeck-frame.is-pdf-focused {
-    z-index: 4 !important;
-    outline: 4px solid #7c3aed;
-    outline-offset: -4px;
-    box-shadow: 0 8px 28px rgba(88, 48, 160, 0.35);
-  }
-  html[data-deck-mode="pdf"] .dpf-pitchDeck-frame.is-pdf-focused > .dpf-pitchSlide,
-  html[data-deck-mode="pdf"] .dpf-pitchDeck-frame.is-pdf-focused > .dpf-pitchSlide--scroll {
-    overflow-x: hidden !important;
+  /* Pinch-zoom or selected-zoom: allow scrolling inside tall slides */
+  html[data-deck-mode="pdf"].is-pdf-zoomed .dpf-pitchDeck-frame.is-pdf-can-scroll > .dpf-pitchSlide,
+  html[data-deck-mode="pdf"].is-pdf-zoomed .dpf-pitchDeck-frame.is-pdf-can-scroll > .dpf-pitchSlide--scroll,
+  html[data-deck-mode="pdf"] .dpf-pitchDeck-frame.is-pdf-slide-zoom > .dpf-pitchSlide,
+  html[data-deck-mode="pdf"] .dpf-pitchDeck-frame.is-pdf-slide-zoom > .dpf-pitchSlide--scroll {
+    overflow-x: auto !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch;
-    overscroll-behavior-y: contain;
-    touch-action: pan-y pinch-zoom;
+    overscroll-behavior: contain;
+    touch-action: pan-x pan-y pinch-zoom;
   }
-  html[data-deck-mode="pdf"] .dpf-pitchDeck-frame.is-pdf-focused > .dpf-pitchSlide > .dpf-pitchSlide-inner {
+  html[data-deck-mode="pdf"].is-pdf-zoomed .dpf-pitchDeck-frame.is-pdf-can-scroll > .dpf-pitchSlide > .dpf-pitchSlide-inner,
+  html[data-deck-mode="pdf"] .dpf-pitchDeck-frame.is-pdf-slide-zoom > .dpf-pitchSlide > .dpf-pitchSlide-inner {
     height: auto !important;
     min-height: min-content !important;
     justify-content: flex-start !important;
   }
-  html[data-deck-mode="pdf"].is-pdf-slide-focus,
-  html[data-deck-mode="pdf"].is-pdf-slide-focus body {
+  /* Selected slide soft-zoom (fills viewport; then inner scroll works) */
+  html[data-deck-mode="pdf"] .dpf-pitchDeck-frame.is-pdf-slide-zoom {
+    position: fixed !important;
+    left: 50% !important;
+    top: 50% !important;
+    width: 1920px !important;
+    height: 1080px !important;
+    max-width: none !important;
+    margin: 0 !important;
+    z-index: 320 !important;
+    transform: translate(-50%, -50%) scale(var(--pdf-slide-zoom, 1)) !important;
+    transform-origin: center center !important;
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+    overflow: hidden !important;
+  }
+  html[data-deck-mode="pdf"].is-pdf-slide-zoom-on,
+  html[data-deck-mode="pdf"].is-pdf-slide-zoom-on body {
     overflow: hidden !important;
     overscroll-behavior: none;
   }
-  html[data-deck-mode="pdf"].is-pdf-slide-focus body {
+  html[data-deck-mode="pdf"].is-pdf-slide-zoom-on body {
     position: fixed !important;
     top: var(--pdf-lock-top, 0px);
     left: 0;
     right: 0;
     width: 100%;
   }
-  .client-deck-pdfFocusHint {
-    display: none;
+  html[data-deck-mode="pdf"].is-pdf-slide-zoom-on .dpf-pitchDeck::before {
+    content: "";
     position: fixed;
-    left: 50%;
-    bottom: max(18px, env(safe-area-inset-bottom));
-    transform: translateX(-50%);
-    z-index: 220;
-    padding: 12px 18px;
-    border-radius: 999px;
-    background: rgba(20, 18, 26, 0.88);
-    color: #fff;
-    font: 600 13px/1.2 "Plus Jakarta Sans", Inter, system-ui, sans-serif;
-    letter-spacing: 0.02em;
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+    inset: 0;
+    z-index: 310;
+    background: rgba(20, 18, 26, 0.55);
     pointer-events: auto;
-    border: 0;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-  }
-  html[data-deck-mode="pdf"].is-pdf-slide-focus .client-deck-pdfFocusHint {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
   }
   html[data-deck-mode="pdf"] .dpf-pitchDeck-nav {
     position: fixed !important;
@@ -238,9 +217,6 @@ const HIDE_CHROME = `
     opacity: 0.9;
     pointer-events: none !important;
   }
-  html[data-deck-mode="pdf"].is-pdf-slide-focus .client-deck-hud {
-    bottom: max(64px, calc(env(safe-area-inset-bottom) + 52px)) !important;
-  }
   html[data-deck-mode="pdf"] .client-deck-overlayHost,
   html[data-deck-mode="pdf"] .client-deck-overlayHost .dpf-calcModal-backdrop,
   html[data-deck-mode="pdf"] .client-deck-overlayHost .dpf-storyModal-backdrop,
@@ -255,7 +231,7 @@ const HIDE_CHROME = `
     max-height: 100dvh !important;
     overflow: auto !important;
     -webkit-overflow-scrolling: touch;
-    touch-action: pan-y pinch-zoom;
+    touch-action: pan-x pan-y pinch-zoom;
   }
   /* DMS Analysis — campaign types only (V1-style list; CRM Analysis untouched) */
   .cad--typesOnly .cad-scan,
@@ -383,9 +359,11 @@ const DECK_SCRIPT = `
   var i = 0;
   var scrollT = null;
   var scrolling = false;
-  var focusedFrame = null;
+  var zoomedFrame = null;
   var lockY = 0;
-  var focusHint = null;
+  var baseScale = 1;
+  var lastTap = { t: 0, x: 0, y: 0, frame: null };
+  var touchPan = { active: false, x: 0, y: 0, sx: 0, sy: 0 };
 
   function isPdf() {
     return document.documentElement.getAttribute('data-deck-mode') === 'pdf';
@@ -393,22 +371,6 @@ const DECK_SCRIPT = `
 
   function slideOf(frame) {
     return frame ? (frame.querySelector('[data-pitch-slide]') || frame.firstElementChild) : null;
-  }
-
-  function ensureFocusHint() {
-    if (focusHint) return focusHint;
-    focusHint = document.createElement('button');
-    focusHint.type = 'button';
-    focusHint.className = 'client-deck-pdfFocusHint';
-    focusHint.setAttribute('aria-label', 'Back to deck scroll');
-    focusHint.textContent = 'Back to deck scroll';
-    focusHint.addEventListener('click', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      clearPdfFocus();
-    });
-    document.body.appendChild(focusHint);
-    return focusHint;
   }
 
   function canSlideScroll(frame) {
@@ -425,37 +387,63 @@ const DECK_SCRIPT = `
     });
   }
 
-  function clearPdfFocus() {
-    if (!focusedFrame && !document.documentElement.classList.contains('is-pdf-slide-focus')) return;
-    if (focusedFrame) focusedFrame.classList.remove('is-pdf-focused');
-    focusedFrame = null;
-    document.documentElement.classList.remove('is-pdf-slide-focus');
-    document.documentElement.style.removeProperty('--pdf-lock-top');
-    var body = document.body;
-    if (body && body.style.position === 'fixed') {
-      body.style.position = '';
-      body.style.top = '';
-      body.style.left = '';
-      body.style.right = '';
-      body.style.width = '';
+  function currentScale() {
+    try {
+      if (window.visualViewport && typeof window.visualViewport.scale === 'number') {
+        return window.visualViewport.scale || 1;
+      }
+    } catch (e) {}
+    return 1;
+  }
+
+  function captureBaseScale() {
+    baseScale = currentScale() || 1;
+  }
+
+  function syncPinchZoomClass() {
+    if (!isPdf()) {
+      document.documentElement.classList.remove('is-pdf-zoomed');
+      return;
     }
+    var scale = currentScale();
+    var zoomed = scale > (baseScale * 1.06 + 0.001);
+    document.documentElement.classList.toggle('is-pdf-zoomed', zoomed);
+    if (zoomed) markScrollableFrames();
+  }
+
+  function slideZoomFactor() {
+    var vw = (window.visualViewport && window.visualViewport.width) || window.innerWidth || 390;
+    var vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight || 700;
+    // Slightly larger than fit-contain so the selected slide feels zoomed in
+    var fit = Math.min(vw / 1920, vh / 1080);
+    return Math.max(fit * 1.18, fit + 0.04);
+  }
+
+  function clearSlideZoom() {
+    if (!zoomedFrame && !document.documentElement.classList.contains('is-pdf-slide-zoom-on')) return;
+    if (zoomedFrame) zoomedFrame.classList.remove('is-pdf-slide-zoom');
+    zoomedFrame = null;
+    document.documentElement.classList.remove('is-pdf-slide-zoom-on');
+    document.documentElement.style.removeProperty('--pdf-lock-top');
+    document.documentElement.style.removeProperty('--pdf-slide-zoom');
     window.scrollTo(0, lockY || 0);
   }
 
-  function focusPdfFrame(frame) {
+  function openSlideZoom(frame) {
     if (!isPdf() || !frame || !canSlideScroll(frame)) return;
-    if (focusedFrame === frame) return;
-    clearPdfFocus();
-    ensureFocusHint();
+    if (zoomedFrame === frame) return;
+    clearSlideZoom();
+    markScrollableFrames();
     lockY = window.scrollY || window.pageYOffset || 0;
-    document.documentElement.style.setProperty('--pdf-lock-top', (-lockY) + 'px');
-    focusedFrame = frame;
-    frame.classList.add('is-pdf-focused');
-    document.documentElement.classList.add('is-pdf-slide-focus');
-    // Keep selected slide in view before locking
     try { frame.scrollIntoView({ block: 'nearest', behavior: 'auto' }); } catch (e) {}
     lockY = window.scrollY || window.pageYOffset || 0;
     document.documentElement.style.setProperty('--pdf-lock-top', (-lockY) + 'px');
+    document.documentElement.style.setProperty('--pdf-slide-zoom', String(slideZoomFactor()));
+    zoomedFrame = frame;
+    frame.classList.add('is-pdf-slide-zoom');
+    document.documentElement.classList.add('is-pdf-slide-zoom-on');
+    var idx = frames.indexOf(frame);
+    if (idx >= 0) setChrome(idx, true);
   }
 
   function setChrome(idx, writeHash) {
@@ -480,7 +468,7 @@ const DECK_SCRIPT = `
 
   function showDeck(next) {
     if (!frames.length) return;
-    clearPdfFocus();
+    clearSlideZoom();
     i = Math.max(0, Math.min(frames.length - 1, next));
     frames.forEach(function (frame, idx) {
       var on = idx === i;
@@ -492,7 +480,7 @@ const DECK_SCRIPT = `
 
   function jumpPdf(next, smooth) {
     if (!frames.length) return;
-    clearPdfFocus();
+    clearSlideZoom();
     i = Math.max(0, Math.min(frames.length - 1, next));
     revealAllPdfPages();
     setChrome(i);
@@ -514,7 +502,7 @@ const DECK_SCRIPT = `
   }
 
   function syncFromScroll() {
-    if (!isPdf() || !frames.length || scrolling || focusedFrame) return;
+    if (!isPdf() || !frames.length || scrolling || zoomedFrame) return;
     var y = window.scrollY || window.pageYOffset || 0;
     var viewH = window.innerHeight || 1;
     var mid = y + viewH * 0.4;
@@ -530,22 +518,27 @@ const DECK_SCRIPT = `
 
   function onModeChange() {
     if (isPdf()) {
+      captureBaseScale();
       revealAllPdfPages();
       setChrome(Math.max(0, Math.min(frames.length - 1, i)), false);
+      syncPinchZoomClass();
     } else {
-      clearPdfFocus();
-      frames.forEach(function (frame) { frame.classList.remove('is-pdf-can-scroll', 'is-pdf-focused'); });
+      clearSlideZoom();
+      document.documentElement.classList.remove('is-pdf-zoomed');
+      frames.forEach(function (frame) {
+        frame.classList.remove('is-pdf-can-scroll', 'is-pdf-slide-zoom');
+      });
       showDeck(i);
     }
   }
 
   document.addEventListener('keydown', function (e) {
     if (isPdf()) {
-      if (e.key === 'Escape' && focusedFrame) {
+      if (e.key === 'Escape' && zoomedFrame) {
         e.preventDefault();
-        clearPdfFocus();
+        clearSlideZoom();
       }
-      return; // phone/tablet: native scroll only
+      return;
     }
     var tag = (e.target && e.target.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
@@ -564,6 +557,40 @@ const DECK_SCRIPT = `
     }
   });
 
+  // Sensitive one-finger pan while browsing (not while zoomed into a slide)
+  window.addEventListener('touchstart', function (e) {
+    if (!isPdf() || zoomedFrame || e.touches.length !== 1) {
+      touchPan.active = false;
+      return;
+    }
+    if (document.documentElement.classList.contains('is-pdf-zoomed')) {
+      touchPan.active = false;
+      return;
+    }
+    touchPan.active = true;
+    touchPan.x = e.touches[0].clientX;
+    touchPan.y = e.touches[0].clientY;
+    touchPan.sx = window.scrollX || window.pageXOffset || 0;
+    touchPan.sy = window.scrollY || window.pageYOffset || 0;
+  }, { passive: true });
+
+  window.addEventListener('touchmove', function (e) {
+    if (!touchPan.active || !isPdf() || zoomedFrame || e.touches.length !== 1) return;
+    if (document.documentElement.classList.contains('is-pdf-zoomed')) return;
+    if (e.target && e.target.closest && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    var x = e.touches[0].clientX;
+    var y = e.touches[0].clientY;
+    var dx = touchPan.x - x;
+    var dy = touchPan.y - y;
+    // Amplify finger travel so up/down/left/right feels more sensitive
+    var gain = 1.55;
+    window.scrollTo(touchPan.sx + dx * gain, touchPan.sy + dy * gain);
+    e.preventDefault();
+  }, { passive: false });
+
+  window.addEventListener('touchend', function () { touchPan.active = false; }, { passive: true });
+  window.addEventListener('touchcancel', function () { touchPan.active = false; }, { passive: true });
+
   document.addEventListener('click', function (e) {
     if (!isPdf()) {
       if (e.target.closest('button, a, input, select, textarea, [role="button"], [data-demo-cta]')) return;
@@ -572,20 +599,36 @@ const DECK_SCRIPT = `
       else if (x < 0.38) show(i - 1);
       return;
     }
-    if (e.target.closest('.client-deck-overlayHost, .client-deck-pdfFocusHint')) return;
-    var frame = e.target.closest('.dpf-pitchDeck-frame');
-    if (!frame) {
-      clearPdfFocus();
+    if (e.target.closest('.client-deck-overlayHost')) return;
+
+    // Dimmed backdrop / outside: exit selected zoom
+    if (zoomedFrame) {
+      var onZoomed = e.target.closest('.dpf-pitchDeck-frame.is-pdf-slide-zoom');
+      if (!onZoomed) {
+        clearSlideZoom();
+        return;
+      }
+      // clicks inside zoomed slide (controls) stay; no-op
       return;
     }
-    // Selecting a tall slide enables in-slide finger scroll (e.g. Vini Pricing)
-    if (canSlideScroll(frame)) {
-      focusPdfFrame(frame);
-      var idx = frames.indexOf(frame);
-      if (idx >= 0) setChrome(idx, true);
-    } else {
-      clearPdfFocus();
+
+    var frame = e.target.closest('.dpf-pitchDeck-frame');
+    if (!frame || !canSlideScroll(frame)) return;
+
+    // Selecting a tall slide zooms it; then inner scroll works
+    var now = Date.now();
+    var isDouble = (now - lastTap.t) < 320 &&
+      Math.abs(e.clientX - lastTap.x) < 40 &&
+      Math.abs(e.clientY - lastTap.y) < 40 &&
+      lastTap.frame === frame;
+    lastTap = { t: now, x: e.clientX, y: e.clientY, frame: frame };
+
+    if (e.target.closest('button, a, input, select, textarea, [role="button"], [data-demo-cta]')) {
+      // Still allow select-zoom via double-tap near controls; single tap keeps control behavior
+      if (isDouble) openSlideZoom(frame);
+      return;
     }
+    openSlideZoom(frame);
   }, { passive: false });
 
   window.addEventListener('scroll', function () {
@@ -594,21 +637,30 @@ const DECK_SCRIPT = `
     scrollT = setTimeout(syncFromScroll, 40);
   }, { passive: true });
 
-  // Do not scrollIntoView on resize — that fights finger scrolling
+  function onViewportChange() {
+    syncPinchZoomClass();
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', onViewportChange, { passive: true });
+    window.visualViewport.addEventListener('scroll', onViewportChange, { passive: true });
+  }
+
   window.addEventListener('resize', function () {
     clearTimeout(window.__deckNavResizeT);
     window.__deckNavResizeT = setTimeout(function () {
       onModeChange();
-      markScrollableFrames();
+      if (zoomedFrame) {
+        document.documentElement.style.setProperty('--pdf-slide-zoom', String(slideZoomFactor()));
+      }
     }, 140);
   }, { passive: true });
 
   var startIdx = fromHash();
   if (isPdf()) {
-    ensureFocusHint();
+    captureBaseScale();
     revealAllPdfPages();
     setChrome(Math.max(0, startIdx), false);
-    // Only jump when deep-linked to a non-first slide
+    syncPinchZoomClass();
     if (startIdx > 0 && frames[startIdx]) {
       requestAnimationFrame(function () {
         jumpPdf(startIdx, false);
