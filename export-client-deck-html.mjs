@@ -69,6 +69,95 @@ const HIDE_CHROME = `
     pointer-events: none;
     user-select: none;
   }
+  /* —— Phone / tablet: PDF-like vertical page stack (desktop unchanged) —— */
+  html[data-deck-mode="pdf"],
+  html[data-deck-mode="pdf"] body {
+    overflow: auto !important;
+    overflow-x: hidden !important;
+    height: auto !important;
+    min-height: 100% !important;
+    background: #525659 !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+  html[data-deck-mode="pdf"] .dpf-pitchDeck {
+    position: relative !important;
+    inset: auto !important;
+    width: 1920px !important;
+    max-width: 1920px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 auto;
+    background: #525659 !important;
+    padding: 20px 0 96px !important;
+    box-sizing: border-box;
+  }
+  html[data-deck-mode="pdf"] .dpf-pitchDeck-stage {
+    position: relative !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 18px !important;
+    width: 1920px !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: transparent !important;
+  }
+  html[data-deck-mode="pdf"] .dpf-pitchDeck-frame,
+  html[data-deck-mode="pdf"] .dpf-pitchDeck-frame.is-on {
+    display: block !important;
+    position: relative !important;
+    inset: auto !important;
+    width: 1920px !important;
+    height: 1080px !important;
+    max-width: 1920px !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    z-index: 1 !important;
+    overflow: hidden !important;
+    background: #fff !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+    flex: 0 0 auto !important;
+    transition: none !important;
+  }
+  html[data-deck-mode="pdf"] .dpf-pitchDeck-frame > .dpf-pitchSlide {
+    width: 1920px !important;
+    height: 1080px !important;
+  }
+  html[data-deck-mode="pdf"] .dpf-pitchDeck-nav {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: 0 !important;
+    bottom: auto !important;
+    z-index: 200 !important;
+  }
+  html[data-deck-mode="pdf"] .dpf-pitchDeck-progress {
+    height: 3px !important;
+  }
+  html[data-deck-mode="pdf"] .client-deck-hud {
+    right: max(12px, env(safe-area-inset-right)) !important;
+    bottom: max(12px, env(safe-area-inset-bottom)) !important;
+    font-size: 11px !important;
+    padding: 6px 10px !important;
+    opacity: 0.92;
+  }
+  html[data-deck-mode="pdf"] .client-deck-overlayHost,
+  html[data-deck-mode="pdf"] .client-deck-overlayHost .dpf-calcModal-backdrop,
+  html[data-deck-mode="pdf"] .client-deck-overlayHost .dpf-storyModal-backdrop,
+  html[data-deck-mode="pdf"] .client-deck-overlayHost .dpf-soChatModal-backdrop,
+  html[data-deck-mode="pdf"] .client-deck-overlayHost .dpf-soChat-backdrop,
+  html[data-deck-mode="pdf"] .client-deck-overlayHost .dpf-soBenefits-backdrop,
+  html[data-deck-mode="pdf"] .client-deck-overlayHost > [class*="backdrop"] {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100dvh !important;
+    overflow: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
   /* DMS Analysis — campaign types only (V1-style list; CRM Analysis untouched) */
   .cad--typesOnly .cad-scan,
   .cad--typesOnly .cad-replay,
@@ -135,13 +224,80 @@ const HIDE_CHROME = `
   }
 `;
 
+const DECK_VIEWPORT_BOOT = `
+  (function () {
+    function isPdfMode() {
+      var touch = false;
+      try { touch = window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(hover: none)').matches; } catch (e) {}
+      touch = touch || ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+      var sw = Math.min(screen.width || 0, screen.height || 0);
+      var sh = Math.max(screen.width || 0, screen.height || 0);
+      var ow = window.outerWidth || 0;
+      var visual = 0;
+      try { visual = (window.visualViewport && window.visualViewport.width) || 0; } catch (e) {}
+      if (sw && sw <= 1024 && touch) return true;
+      if (touch && sh && sh <= 1366 && sw && sw <= 1180) return true;
+      if (visual && visual <= 920) return true;
+      if (ow && ow <= 900) return true;
+      return false;
+    }
+    function deviceFitWidth() {
+      var a = screen.width || 0;
+      var b = screen.height || 0;
+      if (!a && !b) return window.outerWidth || 390;
+      var landscape = false;
+      try { landscape = window.matchMedia('(orientation: landscape)').matches; } catch (e) {}
+      return landscape ? Math.max(a, b) : Math.min(a, b);
+    }
+    function apply() {
+      var pdf = isPdfMode();
+      document.documentElement.setAttribute('data-deck-mode', pdf ? 'pdf' : 'deck');
+      var meta = document.getElementById('client-deck-viewport');
+      if (!meta) return;
+      if (pdf) {
+        var designW = 1920;
+        var fitW = deviceFitWidth() || designW;
+        var scale = Math.min(1, fitW / designW);
+        meta.setAttribute(
+          'content',
+          'width=' + designW + ', initial-scale=' + scale.toFixed(5) +
+          ', minimum-scale=0.1, maximum-scale=3, user-scalable=yes, viewport-fit=cover'
+        );
+      } else {
+        meta.setAttribute('content', 'width=1920, initial-scale=1, viewport-fit=cover');
+      }
+    }
+    apply();
+    window.addEventListener('orientationchange', function () { setTimeout(apply, 80); });
+    window.addEventListener('resize', function () {
+      clearTimeout(window.__deckPdfResizeT);
+      window.__deckPdfResizeT = setTimeout(apply, 120);
+    });
+  })();
+`;
+
 const DECK_SCRIPT = `
 (function () {
   var frames = Array.prototype.slice.call(document.querySelectorAll('.dpf-pitchDeck-frame'));
   var fill = document.querySelector('.dpf-pitchDeck-progressFill');
   var hud = document.querySelector('[data-client-deck-hud]');
   var i = 0;
-  function show(next) {
+  var scrollT = null;
+
+  function isPdf() {
+    return document.documentElement.getAttribute('data-deck-mode') === 'pdf';
+  }
+
+  function setChrome(idx) {
+    i = idx;
+    if (fill) {
+      fill.style.width = (frames.length > 1 ? (i / (frames.length - 1)) * 100 : 100) + '%';
+    }
+    if (hud) hud.textContent = (i + 1) + ' / ' + frames.length;
+    try { history.replaceState(null, '', '#slide-' + (i + 1)); } catch (e) {}
+  }
+
+  function showDeck(next) {
     if (!frames.length) return;
     i = Math.max(0, Math.min(frames.length - 1, next));
     frames.forEach(function (frame, idx) {
@@ -149,40 +305,87 @@ const DECK_SCRIPT = `
       frame.classList.toggle('is-on', on);
       frame.setAttribute('aria-hidden', on ? 'false' : 'true');
     });
-    if (fill) {
-      fill.style.width = (frames.length > 1 ? (i / (frames.length - 1)) * 100 : 100) + '%';
-    }
-    if (hud) hud.textContent = (i + 1) + ' / ' + frames.length;
-    try { history.replaceState(null, '', '#slide-' + (i + 1)); } catch (e) {}
+    setChrome(i);
   }
+
+  function showPdf(next, smooth) {
+    if (!frames.length) return;
+    i = Math.max(0, Math.min(frames.length - 1, next));
+    frames.forEach(function (frame, idx) {
+      frame.classList.add('is-on');
+      frame.setAttribute('aria-hidden', 'false');
+      frame.setAttribute('data-pdf-page', String(idx + 1));
+    });
+    setChrome(i);
+    var target = frames[i];
+    if (target && target.scrollIntoView) {
+      target.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+    }
+  }
+
+  function show(next, smooth) {
+    if (isPdf()) showPdf(next, !!smooth);
+    else showDeck(next);
+  }
+
   function fromHash() {
     var m = (location.hash || '').match(/slide-(\\d+)/i);
     return m ? parseInt(m[1], 10) - 1 : 0;
   }
+
+  function syncFromScroll() {
+    if (!isPdf() || !frames.length) return;
+    var mid = window.scrollY + window.innerHeight * 0.35;
+    var best = 0;
+    var bestDist = Infinity;
+    for (var n = 0; n < frames.length; n++) {
+      var top = frames[n].offsetTop;
+      var dist = Math.abs(top - mid + frames[n].offsetHeight * 0.2);
+      if (dist < bestDist) { bestDist = dist; best = n; }
+    }
+    if (best !== i) setChrome(best);
+  }
+
   document.addEventListener('keydown', function (e) {
     var tag = (e.target && e.target.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
     if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
       e.preventDefault();
-      show(i + 1);
+      show(i + 1, true);
     } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
       e.preventDefault();
-      show(i - 1);
+      show(i - 1, true);
     } else if (e.key === 'Home') {
       e.preventDefault();
-      show(0);
+      show(0, true);
     } else if (e.key === 'End') {
       e.preventDefault();
-      show(frames.length - 1);
+      show(frames.length - 1, true);
     }
   });
+
   document.addEventListener('click', function (e) {
-    if (e.target.closest('button, a, input, select, textarea, [role="button"]')) return;
+    if (isPdf()) return;
+    if (e.target.closest('button, a, input, select, textarea, [role="button"], [data-demo-cta]')) return;
     var x = e.clientX / window.innerWidth;
     if (x > 0.62) show(i + 1);
     else if (x < 0.38) show(i - 1);
   });
-  show(fromHash());
+
+  window.addEventListener('scroll', function () {
+    if (!isPdf()) return;
+    clearTimeout(scrollT);
+    scrollT = setTimeout(syncFromScroll, 60);
+  }, { passive: true });
+
+  window.addEventListener('resize', function () {
+    clearTimeout(window.__deckNavResizeT);
+    window.__deckNavResizeT = setTimeout(function () {
+      show(i, false);
+    }, 140);
+  });
+
+  show(fromHash(), false);
 })();
 `;
 
@@ -455,7 +658,8 @@ const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=${WIDTH}, height=${HEIGHT}, initial-scale=1" />
+  <meta name="viewport" content="width=${WIDTH}, initial-scale=1, viewport-fit=cover" id="client-deck-viewport" />
+  <script>${DECK_VIEWPORT_BOOT}</script>
   <title>Vini client deck</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
