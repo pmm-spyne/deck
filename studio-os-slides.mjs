@@ -373,24 +373,35 @@ export const STUDIO_OS_CSS = `
   width: 100%;
 }
 .cd-studio-provenCopy { min-width: 0; max-width: 40rem; }
-.cd-studio-statStack,
-.cd-studio-quotes {
+.cd-studio-provenGrid {
   --cd-proven-gap: 14px;
   --cd-proven-radius: 12px;
   --cd-proven-border: 1px solid rgba(205, 148, 255, 0.45);
   display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--cd-proven-gap);
+  align-items: stretch;
+  width: 100%;
+  margin-top: 48px;
+}
+.cd-studio-statStack,
+.cd-studio-quotes {
+  display: grid;
   gap: var(--cd-proven-gap);
   width: 100%;
   margin: 0;
-  flex: 0 0 auto;
+  min-width: 0;
+  height: 100%;
 }
 .cd-studio-statStack {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-top: 110px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
 }
 .cd-studio-quotes {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 110px;
+  grid-template-columns: 1fr;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  width: 98%;
+  justify-self: end;
 }
 .cd-studio-stat,
 .cd-studio-quote {
@@ -398,16 +409,21 @@ export const STUDIO_OS_CSS = `
   border: var(--cd-proven-border);
   background: #fff;
   min-width: 0;
+  min-height: 0;
 }
 .cd-studio-stat {
   text-align: center;
-  padding: 18px 12px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 14px;
   background: linear-gradient(180deg, #ffffff 0%, #f3e9ff 100%);
 }
 .cd-studio-stat b {
   display: block;
   margin: 0;
-  font-size: clamp(24px, 2.4vw, 34px);
+  font-size: clamp(26px, 2.6vw, 36px);
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1;
@@ -415,8 +431,8 @@ export const STUDIO_OS_CSS = `
 }
 .cd-studio-stat span {
   display: block;
-  margin-top: 6px;
-  font-size: 12px;
+  margin-top: 8px;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: #111827;
@@ -425,9 +441,9 @@ export const STUDIO_OS_CSS = `
 .cd-studio-quote {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   padding: 18px 20px 16px;
-  min-height: 0;
+  height: 100%;
 }
 .cd-studio-quote blockquote {
   margin: 0;
@@ -601,6 +617,7 @@ export function getStudioOsFrames() {
           <h2 id="cd-studio-proven-title" class="cd-studio-title">Built for dealerships.<br />Proven in the <em>field</em>.</h2>
           <p class="cd-studio-sub">Real outcomes across images, car tours, and every listing.</p>
         </div>
+        <div class="cd-studio-provenGrid">
         <div class="cd-studio-statStack" role="list">
           <div class="cd-studio-stat" role="listitem"><b>80%</b><span>Lower Turnaround Time</span></div>
           <div class="cd-studio-stat" role="listitem"><b>40%</b><span>Lower Merchandising Cost</span></div>
@@ -632,6 +649,7 @@ export function getStudioOsFrames() {
             </span>
           </div>
         </article>
+        </div>
         </div>
       </div>
       <div class="cd-studio-trust">
