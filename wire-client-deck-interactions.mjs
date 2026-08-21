@@ -457,32 +457,11 @@ const INTERACTIVITY_JS = `
       el.textContent = String(d.cars);
     });
     try { sessionStorage.setItem('deckCarsSeam', String(d.cars)); } catch (e) {}
-    // Live-refresh open math modal
+    // If math modal is open, rebuild it from the new cars (production parity)
     var hostEl = document.querySelector('[data-client-deck-overlay-host], .client-deck-overlayHost');
-    if (hostEl && !hostEl.hidden && hostEl.querySelector('.dpf-coldLeadsExplain-modal')) {
+    if (hostEl && !hostEl.hidden && hostEl.querySelector('.dpf-coldLeadsExplain-modal') && window.__deckOpenSeamExplain) {
       var title = (hostEl.querySelector('.dpf-coldLeadsExplain-title') || {}).textContent || '';
-      var isService = /service customers/i.test(title);
-      var html = deckBuildSeamExplainHtml(isService, d.cars);
-      hostEl.innerHTML = html;
-      // re-bind close on new nodes happens via openOverlay listeners only once —
-      // re-bind simply here:
-      var root = hostEl.firstElementChild;
-      if (root) {
-        root.addEventListener('click', function (ev) {
-          if (ev.target === root) {
-            hostEl.hidden = true;
-            hostEl.innerHTML = '';
-          }
-        });
-        hostEl.querySelectorAll('.dpf-coldLeadsExplain-close, [aria-label*="Close" i]').forEach(function (btn) {
-          btn.addEventListener('click', function (ev) {
-            ev.preventDefault();
-            ev.stopPropagation();
-            hostEl.hidden = true;
-            hostEl.innerHTML = '';
-          });
-        });
-      }
+      window.__deckOpenSeamExplain(/service customers/i.test(title));
     }
     // Defer heavy full-deck sync so ⓘ / typing stay responsive on this large HTML file.
     if (window.__deckApplyCarsSeam) {
@@ -873,6 +852,50 @@ const INTERACTIVITY_JS = `
   })();
 
 
+
+  // Production-style seam explain: button → open modal from live cars (no MutationObserver).
+  function deckOpenSeamExplain(isService) {
+    var hostEl = document.querySelector('[data-client-deck-overlay-host]') || document.querySelector('.client-deck-overlayHost');
+    if (!hostEl) return;
+    var cars = (typeof deckReadCars === 'function') ? deckReadCars() : 200;
+    var html = (typeof deckBuildSeamExplainHtml === 'function')
+      ? deckBuildSeamExplainHtml(!!isService, cars)
+      : (window.__deckBuildMetricOverlay
+          ? window.__deckBuildMetricOverlay(isService ? 'service_customers_calc_open' : 'cold_leads_calc_open')
+          : null);
+    if (!html && window.__deckInteractionData && window.__deckInteractionData.overlays) {
+      html = window.__deckInteractionData.overlays[isService ? 'service_customers_calc_open' : 'cold_leads_calc_open'];
+    }
+    if (!html) return;
+    hostEl.innerHTML = html;
+    hostEl.hidden = false;
+    function closeSeam() {
+      hostEl.hidden = true;
+      hostEl.innerHTML = '';
+    }
+    var root = hostEl.firstElementChild;
+    if (root) {
+      root.addEventListener('click', function (ev) {
+        if (ev.target === root) closeSeam();
+      });
+    }
+    hostEl.querySelectorAll('.dpf-coldLeadsExplain-close').forEach(function (btn) {
+      btn.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        closeSeam();
+      });
+    });
+  }
+  window.__deckOpenSeamExplain = deckOpenSeamExplain;
+  document.querySelectorAll('[data-demo-cta="cold_leads_calc_open"], [data-demo-cta="service_customers_calc_open"]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      deckOpenSeamExplain(btn.getAttribute('data-demo-cta') === 'service_customers_calc_open');
+    }, true);
+  });
+
   document.addEventListener('click', function (e) {
     var el = e.target.closest('[data-demo-cta]');
     if (!el) return;
@@ -896,37 +919,8 @@ const INTERACTIVITY_JS = `
     if (cta === 'cold_leads_calc_open' || cta === 'service_customers_calc_open') {
       e.preventDefault();
       e.stopPropagation();
-      // Build overlay only — never run full-deck cars sync here (it freezes the huge HTML deck).
-      var liveHtml = null;
-      try {
-        if (window.__deckBuildMetricOverlay) liveHtml = window.__deckBuildMetricOverlay(cta);
-      } catch (errBuild) { liveHtml = null; }
-      if (!liveHtml && typeof deckBuildSeamExplainHtml === 'function') {
-        try {
-          var carsNow = (typeof deckReadCars === 'function') ? deckReadCars() : 200;
-          liveHtml = deckBuildSeamExplainHtml(cta === 'service_customers_calc_open', carsNow);
-        } catch (err2) { liveHtml = null; }
-      }
-      if (!liveHtml) liveHtml = DATA.overlays[cta];
-      if (!liveHtml) return;
-      host.innerHTML = liveHtml;
-      host.hidden = false;
-      var rootLive = host.firstElementChild;
-      if (rootLive) {
-        rootLive.addEventListener('click', function (ev) {
-          if (ev.target === rootLive) {
-            host.hidden = true;
-            host.innerHTML = '';
-          }
-        });
-        host.querySelectorAll('.dpf-coldLeadsExplain-close, [aria-label*="Close"], [aria-label*="close"]').forEach(function (btn) {
-          btn.addEventListener('click', function (ev) {
-            ev.preventDefault();
-            ev.stopPropagation();
-            host.hidden = true;
-            host.innerHTML = '';
-          });
-        });
+      if (window.__deckOpenSeamExplain) {
+        window.__deckOpenSeamExplain(cta === 'service_customers_calc_open');
       }
       return;
     }

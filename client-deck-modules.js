@@ -1022,16 +1022,9 @@ function computePricingPayback(pricing, assumptions = {}) {
       }
     }, true);
 
-    // Whenever a calc overlay is injected, re-patch from live cars
-    var host = document.querySelector('[data-client-deck-overlay-host], .client-deck-overlayHost');
-    if (host && window.MutationObserver) {
-      var mo = new MutationObserver(function () {
-        if (host.hidden) return;
-        var modal = host.querySelector('.dpf-coldLeadsExplain-modal, .dpf-coldLeadsExplain-backdrop');
-        if (modal) window.__deckRefreshMetricOverlay(modal);
-      });
-      mo.observe(host, { childList: true, subtree: true });
-    }
+    // Do NOT MutationObserver-patch calc overlays: patchMetricOverlay mutates
+    // the modal DOM and re-triggers the observer → freezes the page on ⓘ click.
+    // Overlays are built fresh from live cars (production DemoPlatformFunnelPage).
 
     // Initial sync so all slides share the default book
     setTimeout(function () {
