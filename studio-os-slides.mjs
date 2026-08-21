@@ -1,7 +1,7 @@
 /**
  * Studio OS / Visual Merchandising slides for the client deck.
  * Layout/visuals match Spyne pitch references; fonts/colors/backgrounds match Vini deck.
- * Injected after Vini Pricing. Assets live in docs/client-deck/assets/.
+ * Injected before Built for Dealerships. Assets live in docs/client-deck/assets/.
  */
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -698,17 +698,25 @@ export function injectStudioOsIntoDeckHtml(html, { css = STUDIO_OS_CSS } = {}) {
   }
 
   const frames = getStudioOsFrames().join('\n');
-  const pricingMarker = 'data-pitch-label="Vini Pricing"';
-  const pricingIdx = out.indexOf(pricingMarker);
-  if (pricingIdx === -1) {
-    throw new Error('Vini Pricing slide not found — cannot inject Studio OS slides');
+  // Insert before Built for Dealerships (preferred), else after Closing block.
+  // Vini Pricing was removed from the customer deck — do not require it.
+  const insertBeforeLabel = 'data-pitch-label="Built for Dealerships"';
+  const afterLabel = 'data-pitch-label="Closing block"';
+  let insertAt = -1;
+  const beforeIdx = out.indexOf(insertBeforeLabel);
+  if (beforeIdx !== -1) {
+    insertAt = out.lastIndexOf('<div class="dpf-pitchDeck-frame"', beforeIdx);
   }
-
-  const nextFrame = out.indexOf('<div class="dpf-pitchDeck-frame"', pricingIdx + pricingMarker.length);
-  if (nextFrame === -1) {
-    throw new Error('Could not locate Pricing frame boundaries');
+  if (insertAt === -1) {
+    const afterIdx = out.indexOf(afterLabel);
+    if (afterIdx !== -1) {
+      insertAt = out.indexOf('<div class="dpf-pitchDeck-frame"', afterIdx + afterLabel.length);
+    }
   }
-  out = `${out.slice(0, nextFrame)}${frames}\n${out.slice(nextFrame)}`;
+  if (insertAt === -1) {
+    throw new Error('Could not locate Studio OS insert point (Built for Dealerships / Closing block)');
+  }
+  out = `${out.slice(0, insertAt)}${frames}\n${out.slice(insertAt)}`;
   return out;
 }
 

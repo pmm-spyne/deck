@@ -1,8 +1,8 @@
 /**
- * Inject Studio OS slides into docs/client-deck/client-deck.html (after Vini Pricing).
+ * Inject Studio OS slides into client-deck.html (before Built for Dealerships).
  *
  * Usage:
- *   node docs/client-deck/inject-studio-os-slides.mjs
+ *   node inject-studio-os-slides.mjs
  */
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -19,11 +19,15 @@ const after = injectStudioOsIntoDeckHtml(before);
 writeFileSync(DECK_PATH, after, 'utf8');
 
 const labels = [...after.matchAll(/data-pitch-label="([^"]+)"/g)].map((m) => m[1]);
-const start = labels.indexOf('Vini Pricing');
+const studioStart = labels.indexOf('Studio OS Suite');
+const studioEnd = labels.indexOf('Built for Dealerships');
 console.log(`Updated ${DECK_PATH}`);
 console.log(`Slides: ${labels.length}`);
 labels.forEach((l, i) => {
-  const mark = i > start && i < labels.indexOf('Built for Dealerships') ? ' ← studio' : '';
+  const mark =
+    studioStart !== -1 && studioEnd !== -1 && i >= studioStart && i < studioEnd
+      ? ' ← studio'
+      : '';
   console.log(`${String(i + 1).padStart(2)}. ${l}${mark}`);
 });
 
