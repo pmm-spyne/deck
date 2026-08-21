@@ -386,9 +386,11 @@ export const STUDIO_OS_CSS = `
 }
 .cd-studio-statStack {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 110px;
 }
 .cd-studio-quotes {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 110px;
 }
 .cd-studio-stat,
 .cd-studio-quote {

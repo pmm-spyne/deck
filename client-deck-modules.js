@@ -551,12 +551,10 @@ function computePricingPayback(pricing, assumptions = {}) {
 
   function wireCarsSeamRecalc() {
     var LEADS_PER_CAR = 10;
-    document.querySelectorAll('input.dpf-soSeam-carsInput, button.dpf-soSeam-carsValue').forEach(function (el) {
-      // already mounted inputs preferred
-    });
-    function applyCars(cars) {
-      cars = Math.max(1, Math.min(50000, Math.round(Number(cars) || 0)));
-      // sales seam: cars * leadsPerCar * 36
+    var liveT = null;
+
+    function updateHighlights(cars) {
+      cars = Math.max(0, Math.min(50000, Math.round(Number(cars) || 0)));
       var salesMid = cars * LEADS_PER_CAR * 36;
       var sales = coldLeadsRangeFromMid(salesMid);
       var serviceMid = cars * 36;
@@ -568,32 +566,61 @@ function computePricingPayback(pricing, assumptions = {}) {
         var label = isService ? (range.plusLabel + ' customers') : (range.plusLabel + ' cold leads');
         var hi = seam.querySelector('.dpf-soSeam-highlight');
         if (hi) hi.textContent = label;
-        var inp = seam.querySelector('.dpf-soSeam-carsInput, .dpf-soSeam-carsValue');
-        if (inp) {
+      });
+    }
+
+    function applyCars(cars, opts) {
+      opts = opts || {};
+      var live = !!opts.live;
+      cars = Math.max(live ? 0 : 1, Math.min(50000, Math.round(Number(cars) || 0)));
+      if (!live && cars < 1) cars = 200;
+
+      updateHighlights(cars);
+
+      if (!live) {
+        document.querySelectorAll('.dpf-soSeam').forEach(function (seam) {
+          var inp = seam.querySelector('.dpf-soSeam-carsInput, .dpf-soSeam-carsValue');
+          if (!inp) return;
           if (inp.tagName === 'INPUT') {
-            // leave raw while focused
             if (document.activeElement !== inp) inp.value = String(cars);
           } else {
             inp.textContent = String(cars);
           }
-        }
-      });
+        });
 
-      // sync pricing cars input if present
-      var pricingRoot = document.querySelector('.dpf-pricing');
-      if (pricingRoot && pricingRoot.__deckPricing) {
-        pricingRoot.__deckPricing.setCars(cars, true);
+        var pricingRoot = document.querySelector('.dpf-pricing');
+        if (pricingRoot && pricingRoot.__deckPricing) {
+          pricingRoot.__deckPricing.setCars(Math.max(1, cars), true);
+        }
       }
     }
 
-    window.__deckApplyCarsSeam = applyCars;
+    window.__deckApplyCarsSeam = function (cars) { applyCars(cars, { live: false }); };
+
+    function readCarsFromInput(el) {
+      return parseInt(String(el && el.value || '').replace(/[^0-9]/g, ''), 10) || 0;
+    }
+
+    document.addEventListener('input', function (e) {
+      var t = e.target;
+      if (!t || !t.classList || !t.classList.contains('dpf-soSeam-carsInput')) return;
+      var n = readCarsFromInput(t);
+      clearTimeout(liveT);
+      // Update highlight immediately while typing
+      updateHighlights(n);
+      // Light debounce for cross-slide / pricing sync
+      liveT = setTimeout(function () {
+        if (n > 0) applyCars(n, { live: false });
+      }, 180);
+    }, true);
 
     document.addEventListener('blur', function (e) {
       var t = e.target;
       if (!t || !t.classList || !t.classList.contains('dpf-soSeam-carsInput')) return;
-      var n = parseInt(String(t.value || '').replace(/[^0-9]/g, ''), 10);
+      clearTimeout(liveT);
+      var n = readCarsFromInput(t);
       if (!n) n = 200;
-      applyCars(n);
+      applyCars(n, { live: false });
     }, true);
 
     document.addEventListener('keydown', function (e) {
