@@ -362,7 +362,11 @@ const INTERACTIVITY_JS = `
   }
 
   function openOverlay(cta) {
-    var html = DATA.overlays[cta];
+    var html = null;
+    if (window.__deckBuildMetricOverlay) {
+      try { html = window.__deckBuildMetricOverlay(cta); } catch (err) { html = null; }
+    }
+    if (!html) html = DATA.overlays[cta];
     if (!html) return false;
     host.innerHTML = html;
     host.hidden = false;
@@ -485,6 +489,9 @@ const INTERACTIVITY_JS = `
       if (next == null) next = current;
       current = next;
       input.value = formatCars(next);
+      if (window.__deckApplyCarsSeam) {
+        try { window.__deckApplyCarsSeam(current); } catch (err) {}
+      }
     }
 
     ['pointerdown', 'mousedown', 'click', 'mouseup', 'touchstart'].forEach(function (type) {
@@ -516,6 +523,10 @@ const INTERACTIVITY_JS = `
         input.value = cleaned;
         var delta = before.length - cleaned.length;
         try { input.setSelectionRange(Math.max(0, caret - delta), Math.max(0, caret - delta)); } catch (err) {}
+      }
+      var live = parseCars(input.value);
+      if (live != null && window.__deckApplyCarsSeam) {
+        try { window.__deckApplyCarsSeam(live); } catch (err) {}
       }
     });
 

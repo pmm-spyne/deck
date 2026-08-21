@@ -809,6 +809,70 @@ function computePricingPayback(pricing, assumptions = {}) {
       }
     }
 
+    function buildMetricOverlayHtml(isService, cars) {
+      var d = deriveDeckMetrics(cars, LEADS_PER_CAR);
+      var range = isService ? d.service : d.sales;
+      var carsN = d.cars;
+      var monthly = isService ? carsN : d.monthlyLeads;
+      var title = isService
+        ? 'How we estimated service customers in your CRM'
+        : 'How we estimated cold leads in your CRM';
+      var tagline = isService
+        ? ''
+        : '<p class="dpf-coldLeadsExplain-tagline">Monthly leads, projected over 3 years of CRM history and shown as a range so it reads like an estimate, not a promise.</p>';
+      var inputs = isService
+        ? ('<dl class="dpf-coldLeadsExplain-inputs"><div class="dpf-coldLeadsExplain-inputRow"><dt>Cars sold / month</dt><dd>'
+          + formatLeadCount(carsN) + '</dd></div></dl>'
+          + '<p class="dpf-coldLeadsExplain-inputHint"><strong>Cars sold / month</strong>: used as a proxy for customers who stay in your DMS and can be reached for recalls and overdue service.</p>')
+        : ('<dl class="dpf-coldLeadsExplain-inputs"><div class="dpf-coldLeadsExplain-inputRow"><dt>Cars sold / month</dt><dd>'
+          + formatLeadCount(carsN) + '</dd></div><div class="dpf-coldLeadsExplain-inputRow"><dt>Leads per car</dt><dd>'
+          + d.leadsPerCar + '</dd></div></dl>'
+          + '<p class="dpf-coldLeadsExplain-inputHint"><strong>Leads per car</strong>: inbound leads (calls, chats, form fills) per car sold, used as a proxy for total lead volume.</p>');
+      var steps = isService
+        ? (
+          '<div class="dpf-coldLeadsExplain-steps" role="list">'
+          + '<div class="dpf-coldLeadsExplain-step" role="listitem"><span class="dpf-coldLeadsExplain-stepNum">01</span><div class="dpf-coldLeadsExplain-stepBody"><p class="dpf-coldLeadsExplain-stepLabel">Monthly cars sold</p><p class="dpf-coldLeadsExplain-stepVal"><span class="dpf-coldLeadsExplain-stepHl">'
+          + formatLeadCount(carsN) + ' cars/mo</span></p></div></div>'
+          + '<div class="dpf-coldLeadsExplain-step" role="listitem"><span class="dpf-coldLeadsExplain-stepNum">02</span><div class="dpf-coldLeadsExplain-stepBody"><p class="dpf-coldLeadsExplain-stepLabel">3-year midpoint</p><p class="dpf-coldLeadsExplain-stepVal">'
+          + formatLeadCount(carsN) + ' × 36 months = <span class="dpf-coldLeadsExplain-stepHl">'
+          + formatLeadCount(range.mid) + ' customers</span></p></div></div>'
+          + '<div class="dpf-coldLeadsExplain-step" role="listitem"><span class="dpf-coldLeadsExplain-stepNum">03</span><div class="dpf-coldLeadsExplain-stepBody"><p class="dpf-coldLeadsExplain-stepLabel">Range spread</p><p class="dpf-coldLeadsExplain-stepVal">Applied <span class="dpf-coldLeadsExplain-stepHl">\u00b1'
+          + formatLeadCount(range.delta) + '</span> (about a sixth of the midpoint, rounded)</p></div></div></div>'
+        )
+        : (
+          '<div class="dpf-coldLeadsExplain-steps" role="list">'
+          + '<div class="dpf-coldLeadsExplain-step" role="listitem"><span class="dpf-coldLeadsExplain-stepNum">01</span><div class="dpf-coldLeadsExplain-stepBody"><p class="dpf-coldLeadsExplain-stepLabel">Monthly leads</p><p class="dpf-coldLeadsExplain-stepVal">'
+          + formatLeadCount(carsN) + ' × ' + d.leadsPerCar + ' = <span class="dpf-coldLeadsExplain-stepHl">'
+          + formatLeadCount(monthly) + ' leads/mo</span></p></div></div>'
+          + '<div class="dpf-coldLeadsExplain-step" role="listitem"><span class="dpf-coldLeadsExplain-stepNum">02</span><div class="dpf-coldLeadsExplain-stepBody"><p class="dpf-coldLeadsExplain-stepLabel">3-year midpoint</p><p class="dpf-coldLeadsExplain-stepVal">'
+          + formatLeadCount(monthly) + ' × 36 months = <span class="dpf-coldLeadsExplain-stepHl">'
+          + formatLeadCount(range.mid) + ' leads</span></p></div></div>'
+          + '<div class="dpf-coldLeadsExplain-step" role="listitem"><span class="dpf-coldLeadsExplain-stepNum">03</span><div class="dpf-coldLeadsExplain-stepBody"><p class="dpf-coldLeadsExplain-stepLabel">Range spread</p><p class="dpf-coldLeadsExplain-stepVal">Applied <span class="dpf-coldLeadsExplain-stepHl">\u00b1'
+          + formatLeadCount(range.delta) + '</span> (about a sixth of the midpoint, rounded)</p></div></div></div>'
+        );
+      var resultSuffix = isService
+        ? 'service customers sitting in your CRM'
+        : 'cold leads sitting in your CRM';
+      return (
+        '<div class="dpf-calcModal-backdrop dpf-coldLeadsExplain-backdrop" role="presentation">'
+        + '<div class="dpf-calcModal dpf-coldLeadsExplain-modal" role="dialog" aria-modal="true" aria-labelledby="dpf-coldLeadsExplain-title">'
+        + '<button type="button" class="dpf-coldLeadsExplain-close" aria-label="Close calculation">×</button>'
+        + '<p class="dpf-coldLeadsExplain-eyebrow">The math</p>'
+        + '<h3 id="dpf-coldLeadsExplain-title" class="dpf-coldLeadsExplain-title">' + title + '</h3>'
+        + tagline + inputs + steps
+        + '<div class="dpf-coldLeadsExplain-result"><p class="dpf-coldLeadsExplain-resultLabel">Shown on the seam</p>'
+        + '<p class="dpf-coldLeadsExplain-resultVal">' + range.plusLabel + ' <span>' + resultSuffix + '</span></p></div>'
+        + '</div></div>'
+      );
+    }
+
+    window.__deckBuildMetricOverlay = function (cta) {
+      var cars = (typeof readLiveCars === 'function') ? readLiveCars() : (lastCars || 200);
+      if (cta === 'cold_leads_calc_open') return buildMetricOverlayHtml(false, cars);
+      if (cta === 'service_customers_calc_open') return buildMetricOverlayHtml(true, cars);
+      return null;
+    };
+
     function refreshOpenOverlays(d) {
       document.querySelectorAll(
         '.client-deck-overlayHost .dpf-coldLeadsExplain-modal, .dpf-coldLeadsExplain-modal, .client-deck-overlayHost .dpf-coldLeadsExplain-backdrop'
@@ -845,14 +909,8 @@ function computePricingPayback(pricing, assumptions = {}) {
       // Keep static overlay HTML in sync so reopen always shows current cars/math
       var data = window.__deckInteractionData;
       if (!data || !data.overlays) return;
-      ['cold_leads_calc_open', 'service_customers_calc_open'].forEach(function (key) {
-        var html = data.overlays[key];
-        if (!html) return;
-        var wrap = document.createElement('div');
-        wrap.innerHTML = html;
-        patchMetricOverlay(wrap, d);
-        data.overlays[key] = wrap.innerHTML;
-      });
+      data.overlays.cold_leads_calc_open = buildMetricOverlayHtml(false, d.cars);
+      data.overlays.service_customers_calc_open = buildMetricOverlayHtml(true, d.cars);
     }
 
     function updateDerived(cars, opts) {
