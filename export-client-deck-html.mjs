@@ -80,7 +80,7 @@ const HIDE_CHROME = `
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: auto;
     touch-action: pan-y pinch-zoom;
-    scroll-snap-type: y proximity;
+    scroll-snap-type: none;
   }
   html[data-deck-mode="pdf"] body {
     height: auto !important;
@@ -133,11 +133,7 @@ const HIDE_CHROME = `
     background: #fff !important;
     box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
     flex: 0 0 auto !important;
-    transition: none !important;
-    scroll-snap-align: start;
-    scroll-snap-stop: normal;
-    content-visibility: auto;
-    contain-intrinsic-size: 1920px 1080px;
+    transition: box-shadow 0.18s ease, outline-color 0.18s ease;
     touch-action: pan-y pinch-zoom;
   }
   html[data-deck-mode="pdf"] .dpf-pitchDeck-frame > .dpf-pitchSlide {
@@ -145,9 +141,82 @@ const HIDE_CHROME = `
     height: 1080px !important;
     touch-action: pan-y pinch-zoom;
   }
-  /* Let the page scroll; avoid nested scroll traps on mobile */
+  /* Default: clip tall slides so one-finger page scroll stays easy */
   html[data-deck-mode="pdf"] .dpf-pitchSlide--scroll {
     overflow: hidden !important;
+  }
+  /* Tap-selected tall slide: finger scrolls inside the slide */
+  html[data-deck-mode="pdf"] .dpf-pitchDeck-frame.is-pdf-can-scroll:not(.is-pdf-focused)::after {
+    content: "Tap to scroll slide";
+    position: absolute;
+    left: 50%;
+    bottom: 28px;
+    transform: translateX(-50%);
+    z-index: 5;
+    padding: 10px 18px;
+    border-radius: 999px;
+    background: rgba(20, 18, 26, 0.78);
+    color: #fff;
+    font: 600 22px/1.2 "Plus Jakarta Sans", Inter, system-ui, sans-serif;
+    letter-spacing: 0.02em;
+    pointer-events: none;
+    white-space: nowrap;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  }
+  html[data-deck-mode="pdf"] .dpf-pitchDeck-frame.is-pdf-focused {
+    z-index: 4 !important;
+    outline: 4px solid #7c3aed;
+    outline-offset: -4px;
+    box-shadow: 0 8px 28px rgba(88, 48, 160, 0.35);
+  }
+  html[data-deck-mode="pdf"] .dpf-pitchDeck-frame.is-pdf-focused > .dpf-pitchSlide,
+  html[data-deck-mode="pdf"] .dpf-pitchDeck-frame.is-pdf-focused > .dpf-pitchSlide--scroll {
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    touch-action: pan-y pinch-zoom;
+  }
+  html[data-deck-mode="pdf"] .dpf-pitchDeck-frame.is-pdf-focused > .dpf-pitchSlide > .dpf-pitchSlide-inner {
+    height: auto !important;
+    min-height: min-content !important;
+    justify-content: flex-start !important;
+  }
+  html[data-deck-mode="pdf"].is-pdf-slide-focus,
+  html[data-deck-mode="pdf"].is-pdf-slide-focus body {
+    overflow: hidden !important;
+    overscroll-behavior: none;
+  }
+  html[data-deck-mode="pdf"].is-pdf-slide-focus body {
+    position: fixed !important;
+    top: var(--pdf-lock-top, 0px);
+    left: 0;
+    right: 0;
+    width: 100%;
+  }
+  .client-deck-pdfFocusHint {
+    display: none;
+    position: fixed;
+    left: 50%;
+    bottom: max(18px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    z-index: 220;
+    padding: 12px 18px;
+    border-radius: 999px;
+    background: rgba(20, 18, 26, 0.88);
+    color: #fff;
+    font: 600 13px/1.2 "Plus Jakarta Sans", Inter, system-ui, sans-serif;
+    letter-spacing: 0.02em;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+    pointer-events: auto;
+    border: 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html[data-deck-mode="pdf"].is-pdf-slide-focus .client-deck-pdfFocusHint {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
   }
   html[data-deck-mode="pdf"] .dpf-pitchDeck-nav {
     position: fixed !important;
@@ -168,6 +237,9 @@ const HIDE_CHROME = `
     padding: 6px 10px !important;
     opacity: 0.9;
     pointer-events: none !important;
+  }
+  html[data-deck-mode="pdf"].is-pdf-slide-focus .client-deck-hud {
+    bottom: max(64px, calc(env(safe-area-inset-bottom) + 52px)) !important;
   }
   html[data-deck-mode="pdf"] .client-deck-overlayHost,
   html[data-deck-mode="pdf"] .client-deck-overlayHost .dpf-calcModal-backdrop,
@@ -311,9 +383,79 @@ const DECK_SCRIPT = `
   var i = 0;
   var scrollT = null;
   var scrolling = false;
+  var focusedFrame = null;
+  var lockY = 0;
+  var focusHint = null;
 
   function isPdf() {
     return document.documentElement.getAttribute('data-deck-mode') === 'pdf';
+  }
+
+  function slideOf(frame) {
+    return frame ? (frame.querySelector('[data-pitch-slide]') || frame.firstElementChild) : null;
+  }
+
+  function ensureFocusHint() {
+    if (focusHint) return focusHint;
+    focusHint = document.createElement('button');
+    focusHint.type = 'button';
+    focusHint.className = 'client-deck-pdfFocusHint';
+    focusHint.setAttribute('aria-label', 'Back to deck scroll');
+    focusHint.textContent = 'Back to deck scroll';
+    focusHint.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      clearPdfFocus();
+    });
+    document.body.appendChild(focusHint);
+    return focusHint;
+  }
+
+  function canSlideScroll(frame) {
+    var slide = slideOf(frame);
+    if (!slide) return false;
+    if (slide.getAttribute('data-pitch-scroll') === '1') return true;
+    if (slide.classList.contains('dpf-pitchSlide--scroll')) return true;
+    return (slide.scrollHeight - slide.clientHeight) > 16;
+  }
+
+  function markScrollableFrames() {
+    frames.forEach(function (frame) {
+      frame.classList.toggle('is-pdf-can-scroll', isPdf() && canSlideScroll(frame));
+    });
+  }
+
+  function clearPdfFocus() {
+    if (!focusedFrame && !document.documentElement.classList.contains('is-pdf-slide-focus')) return;
+    if (focusedFrame) focusedFrame.classList.remove('is-pdf-focused');
+    focusedFrame = null;
+    document.documentElement.classList.remove('is-pdf-slide-focus');
+    document.documentElement.style.removeProperty('--pdf-lock-top');
+    var body = document.body;
+    if (body && body.style.position === 'fixed') {
+      body.style.position = '';
+      body.style.top = '';
+      body.style.left = '';
+      body.style.right = '';
+      body.style.width = '';
+    }
+    window.scrollTo(0, lockY || 0);
+  }
+
+  function focusPdfFrame(frame) {
+    if (!isPdf() || !frame || !canSlideScroll(frame)) return;
+    if (focusedFrame === frame) return;
+    clearPdfFocus();
+    ensureFocusHint();
+    lockY = window.scrollY || window.pageYOffset || 0;
+    document.documentElement.style.setProperty('--pdf-lock-top', (-lockY) + 'px');
+    focusedFrame = frame;
+    frame.classList.add('is-pdf-focused');
+    document.documentElement.classList.add('is-pdf-slide-focus');
+    // Keep selected slide in view before locking
+    try { frame.scrollIntoView({ block: 'nearest', behavior: 'auto' }); } catch (e) {}
+    lockY = window.scrollY || window.pageYOffset || 0;
+    document.documentElement.style.setProperty('--pdf-lock-top', (-lockY) + 'px');
   }
 
   function setChrome(idx, writeHash) {
@@ -333,10 +475,12 @@ const DECK_SCRIPT = `
       frame.setAttribute('aria-hidden', 'false');
       frame.setAttribute('data-pdf-page', String(idx + 1));
     });
+    markScrollableFrames();
   }
 
   function showDeck(next) {
     if (!frames.length) return;
+    clearPdfFocus();
     i = Math.max(0, Math.min(frames.length - 1, next));
     frames.forEach(function (frame, idx) {
       var on = idx === i;
@@ -348,6 +492,7 @@ const DECK_SCRIPT = `
 
   function jumpPdf(next, smooth) {
     if (!frames.length) return;
+    clearPdfFocus();
     i = Math.max(0, Math.min(frames.length - 1, next));
     revealAllPdfPages();
     setChrome(i);
@@ -369,7 +514,7 @@ const DECK_SCRIPT = `
   }
 
   function syncFromScroll() {
-    if (!isPdf() || !frames.length || scrolling) return;
+    if (!isPdf() || !frames.length || scrolling || focusedFrame) return;
     var y = window.scrollY || window.pageYOffset || 0;
     var viewH = window.innerHeight || 1;
     var mid = y + viewH * 0.4;
@@ -388,12 +533,20 @@ const DECK_SCRIPT = `
       revealAllPdfPages();
       setChrome(Math.max(0, Math.min(frames.length - 1, i)), false);
     } else {
+      clearPdfFocus();
+      frames.forEach(function (frame) { frame.classList.remove('is-pdf-can-scroll', 'is-pdf-focused'); });
       showDeck(i);
     }
   }
 
   document.addEventListener('keydown', function (e) {
-    if (isPdf()) return; // phone/tablet: native scroll only
+    if (isPdf()) {
+      if (e.key === 'Escape' && focusedFrame) {
+        e.preventDefault();
+        clearPdfFocus();
+      }
+      return; // phone/tablet: native scroll only
+    }
     var tag = (e.target && e.target.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
     if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
@@ -412,12 +565,28 @@ const DECK_SCRIPT = `
   });
 
   document.addEventListener('click', function (e) {
-    if (isPdf()) return; // phone/tablet: flick/scroll, no tap-to-advance
-    if (e.target.closest('button, a, input, select, textarea, [role="button"], [data-demo-cta]')) return;
-    var x = e.clientX / window.innerWidth;
-    if (x > 0.62) show(i + 1);
-    else if (x < 0.38) show(i - 1);
-  }, { passive: true });
+    if (!isPdf()) {
+      if (e.target.closest('button, a, input, select, textarea, [role="button"], [data-demo-cta]')) return;
+      var x = e.clientX / window.innerWidth;
+      if (x > 0.62) show(i + 1);
+      else if (x < 0.38) show(i - 1);
+      return;
+    }
+    if (e.target.closest('.client-deck-overlayHost, .client-deck-pdfFocusHint')) return;
+    var frame = e.target.closest('.dpf-pitchDeck-frame');
+    if (!frame) {
+      clearPdfFocus();
+      return;
+    }
+    // Selecting a tall slide enables in-slide finger scroll (e.g. Vini Pricing)
+    if (canSlideScroll(frame)) {
+      focusPdfFrame(frame);
+      var idx = frames.indexOf(frame);
+      if (idx >= 0) setChrome(idx, true);
+    } else {
+      clearPdfFocus();
+    }
+  }, { passive: false });
 
   window.addEventListener('scroll', function () {
     if (!isPdf()) return;
@@ -428,11 +597,15 @@ const DECK_SCRIPT = `
   // Do not scrollIntoView on resize — that fights finger scrolling
   window.addEventListener('resize', function () {
     clearTimeout(window.__deckNavResizeT);
-    window.__deckNavResizeT = setTimeout(onModeChange, 140);
+    window.__deckNavResizeT = setTimeout(function () {
+      onModeChange();
+      markScrollableFrames();
+    }, 140);
   }, { passive: true });
 
   var startIdx = fromHash();
   if (isPdf()) {
+    ensureFocusHint();
     revealAllPdfPages();
     setChrome(Math.max(0, startIdx), false);
     // Only jump when deep-linked to a non-first slide
@@ -440,6 +613,8 @@ const DECK_SCRIPT = `
       requestAnimationFrame(function () {
         jumpPdf(startIdx, false);
       });
+    } else {
+      requestAnimationFrame(markScrollableFrames);
     }
   } else {
     showDeck(startIdx);
