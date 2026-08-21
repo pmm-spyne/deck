@@ -327,6 +327,7 @@ const INTERACTIVITY_JS = `
 (function () {
   var dataEl = document.getElementById('client-deck-interaction-data');
   var DATA = dataEl ? JSON.parse(dataEl.textContent) : { overlays: {}, chatPreviews: {}, partnerPanels: {} };
+  window.__deckInteractionData = DATA;
   var host = document.querySelector('[data-client-deck-overlay-host]');
   if (!host) return;
 
@@ -370,6 +371,9 @@ const INTERACTIVITY_JS = `
     if (!root) return true;
     if (window.__deckRefreshMetricOverlay && /cold_leads_calc_open|service_customers_calc_open/.test(cta)) {
       try { window.__deckRefreshMetricOverlay(root); } catch (err) {}
+      requestAnimationFrame(function () {
+        try { window.__deckRefreshMetricOverlay(root); } catch (err2) {}
+      });
     }
     root.addEventListener('click', function (e) {
       if (e.target === root) closeOverlay();

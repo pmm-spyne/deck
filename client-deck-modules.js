@@ -757,9 +757,14 @@ function computePricingPayback(pricing, assumptions = {}) {
       var mid = range.mid;
       var delta = range.delta;
 
-      var dds = root.querySelectorAll('.dpf-coldLeadsExplain-inputRow dd');
-      if (dds[0]) dds[0].textContent = formatLeadCount(cars);
-      if (!isService && dds[1]) dds[1].textContent = String(d.leadsPerCar);
+      root.querySelectorAll('.dpf-coldLeadsExplain-inputRow').forEach(function (row) {
+        var dt = row.querySelector('dt');
+        var dd = row.querySelector('dd');
+        if (!dt || !dd) return;
+        var label = (dt.textContent || '').trim().toLowerCase();
+        if (label.indexOf('cars sold') !== -1) dd.textContent = formatLeadCount(cars);
+        else if (label.indexOf('leads per car') !== -1) dd.textContent = String(d.leadsPerCar);
+      });
 
       var steps = root.querySelectorAll('.dpf-coldLeadsExplain-step');
       if (isService) {
@@ -805,20 +810,64 @@ function computePricingPayback(pricing, assumptions = {}) {
     }
 
     function refreshOpenOverlays(d) {
-      document.querySelectorAll('.client-deck-overlayHost .dpf-coldLeadsExplain-modal, .dpf-coldLeadsExplain-modal').forEach(function (modal) {
+      document.querySelectorAll(
+        '.client-deck-overlayHost .dpf-coldLeadsExplain-modal, .dpf-coldLeadsExplain-modal, .client-deck-overlayHost .dpf-coldLeadsExplain-backdrop'
+      ).forEach(function (modal) {
         patchMetricOverlay(modal, d);
+      });
+    }
+
+    function readLiveCars() {
+      var best = lastCars > 0 ? lastCars : 200;
+      var nodes = document.querySelectorAll('.dpf-soSeam-carsInput, .dpf-pricing-carsInput, .dpf-soSeam-carsValue');
+      for (var i = 0; i < nodes.length; i++) {
+        var el = nodes[i];
+        var raw = el.tagName === 'INPUT' ? el.value : el.textContent;
+        var n = parseInt(String(raw || '').replace(/[^0-9]/g, ''), 10) || 0;
+        if (n > 0) {
+          best = n;
+          // Prefer the focused field when present
+          if (document.activeElement === el) return n;
+        }
+      }
+      try {
+        var stored = parseInt(sessionStorage.getItem('deckCarsSeam') || '', 10);
+        if (stored > 0) best = stored;
+      } catch (err) {}
+      return best;
+    }
+
+    function persistCars(cars) {
+      try { sessionStorage.setItem('deckCarsSeam', String(cars)); } catch (err) {}
+    }
+
+    function syncOverlayTemplates(d) {
+      // Keep static overlay HTML in sync so reopen always shows current cars/math
+      var data = window.__deckInteractionData;
+      if (!data || !data.overlays) return;
+      ['cold_leads_calc_open', 'service_customers_calc_open'].forEach(function (key) {
+        var html = data.overlays[key];
+        if (!html) return;
+        var wrap = document.createElement('div');
+        wrap.innerHTML = html;
+        patchMetricOverlay(wrap, d);
+        data.overlays[key] = wrap.innerHTML;
       });
     }
 
     function updateDerived(cars, opts) {
       opts = opts || {};
       var d = deriveDeckMetrics(cars, LEADS_PER_CAR);
-      lastCars = d.cars;
+      lastCars = d.cars > 0 ? d.cars : lastCars;
+      if (d.cars > 0) persistCars(d.cars);
       updateSeamHighlights(d);
       if (!opts.highlightsOnly) {
         updateStorySlides(d);
         updateCrmAnalysis(d);
         updateImpact(d);
+        refreshOpenOverlays(d);
+        syncOverlayTemplates(d);
+      } else {
         refreshOpenOverlays(d);
       }
       return d;
@@ -850,9 +899,13 @@ function computePricingPayback(pricing, assumptions = {}) {
       applyCars(cars, opts || { live: false });
     };
     window.__deckRefreshMetricOverlay = function (root) {
-      patchMetricOverlay(root, deriveDeckMetrics(lastCars, LEADS_PER_CAR));
+      var cars = readLiveCars();
+      var d = deriveDeckMetrics(cars, LEADS_PER_CAR);
+      lastCars = d.cars;
+      patchMetricOverlay(root, d);
+      return d;
     };
-    window.__deckGetCarsSeam = function () { return lastCars; };
+    window.__deckGetCarsSeam = function () { return readLiveCars(); };
 
     function readCarsFromInput(el) {
       return parseInt(String(el && el.value || '').replace(/[^0-9]/g, ''), 10) || 0;
@@ -866,10 +919,18 @@ function computePricingPayback(pricing, assumptions = {}) {
       if (!fromSeam && !fromPricing) return;
       var n = readCarsFromInput(t);
       clearTimeout(liveT);
-      updateDerived(n, { highlightsOnly: false });
+      if (n > 0) updateDerived(n, { highlightsOnly: false });
       liveT = setTimeout(function () {
         if (n > 0) applyCars(n, { live: false, skipEl: t, skipPricing: fromPricing });
-      }, 160);
+      }, 120);
+    }, true);
+
+    document.addEventListener('change', function (e) {
+      var t = e.target;
+      if (!t || !t.classList) return;
+      if (!t.classList.contains('dpf-soSeam-carsInput') && !t.classList.contains('dpf-pricing-carsInput')) return;
+      var n = readCarsFromInput(t) || 200;
+      applyCars(n, { live: false, skipEl: t, skipPricing: t.classList.contains('dpf-pricing-carsInput') });
     }, true);
 
     document.addEventListener('blur', function (e) {
@@ -900,11 +961,20 @@ function computePricingPayback(pricing, assumptions = {}) {
       }
     }, true);
 
+    // Whenever a calc overlay is injected, re-patch from live cars
+    var host = document.querySelector('[data-client-deck-overlay-host], .client-deck-overlayHost');
+    if (host && window.MutationObserver) {
+      var mo = new MutationObserver(function () {
+        if (host.hidden) return;
+        var modal = host.querySelector('.dpf-coldLeadsExplain-modal, .dpf-coldLeadsExplain-backdrop');
+        if (modal) window.__deckRefreshMetricOverlay(modal);
+      });
+      mo.observe(host, { childList: true, subtree: true });
+    }
+
     // Initial sync so all slides share the default book
     setTimeout(function () {
-      var seed = 200;
-      var first = document.querySelector('.dpf-soSeam-carsInput, .dpf-pricing-carsInput');
-      if (first) seed = readCarsFromInput(first) || 200;
+      var seed = readLiveCars();
       applyCars(seed, { live: false });
     }, 0);
   }
