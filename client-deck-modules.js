@@ -866,12 +866,15 @@ function computePricingPayback(pricing, assumptions = {}) {
       );
     }
 
-    window.__deckBuildMetricOverlay = function (cta) {
-      var cars = (typeof readLiveCars === 'function') ? readLiveCars() : (lastCars || 200);
-      if (cta === 'cold_leads_calc_open') return buildMetricOverlayHtml(false, cars);
-      if (cta === 'service_customers_calc_open') return buildMetricOverlayHtml(true, cars);
-      return null;
-    };
+    // Keep production-schema builder from interactivity when present
+    if (!window.__deckSeamApplyCars) {
+      window.__deckBuildMetricOverlay = function (cta) {
+        var cars = (typeof readLiveCars === 'function') ? readLiveCars() : (lastCars || 200);
+        if (cta === 'cold_leads_calc_open') return buildMetricOverlayHtml(false, cars);
+        if (cta === 'service_customers_calc_open') return buildMetricOverlayHtml(true, cars);
+        return null;
+      };
+    }
 
     function refreshOpenOverlays(d) {
       document.querySelectorAll(

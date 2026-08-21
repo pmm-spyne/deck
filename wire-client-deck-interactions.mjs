@@ -328,6 +328,173 @@ const INTERACTIVITY_JS = `
   var dataEl = document.getElementById('client-deck-interaction-data');
   var DATA = dataEl ? JSON.parse(dataEl.textContent) : { overlays: {}, chatPreviews: {}, partnerPanels: {} };
   window.__deckInteractionData = DATA;
+
+  function deckFormatLeadCount(n) {
+    var r = Math.round(Number(n) || 0);
+    if (!isFinite(r)) return '—';
+    return r.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  }
+  function deckFloorToNiceZeros(n) {
+    var r = Math.max(0, Math.round(Number(n) || 0));
+    if (!isFinite(r) || r === 0) return 0;
+    var step = r >= 1000 ? 1000 : r >= 100 ? 100 : r >= 10 ? 10 : 1;
+    return Math.floor(r / step) * step;
+  }
+  function deckFormatPlusFloorCount(n) {
+    var r = Math.max(0, Math.round(Number(n) || 0));
+    var floored = deckFloorToNiceZeros(n);
+    if (floored === 0) return '0';
+    var compact = floored >= 1000 && floored % 1000 === 0
+      ? (floored / 1000) + 'K'
+      : floored.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    return r === floored ? ('+' + compact) : (compact + '+');
+  }
+  function deckRangeFromMid(mid) {
+    var m = Math.max(0, Math.round(Number(mid) || 0));
+    var delta = m > 0 ? Math.max(50, Math.round(m / 6 / 50) * 50) : 0;
+    var lo = Math.max(0, m - delta);
+    return { mid: m, lo: lo, hi: m + delta, delta: delta, shown: deckFloorToNiceZeros(lo), plusLabel: deckFormatPlusFloorCount(lo) };
+  }
+  function deckReadCars() {
+    var best = 200;
+    try {
+      var stored = parseInt(sessionStorage.getItem('deckCarsSeam') || '', 10);
+      if (stored > 0) best = stored;
+    } catch (e) {}
+    document.querySelectorAll('.dpf-soSeam-carsInput, .dpf-pricing-carsInput, .dpf-soSeam-carsValue').forEach(function (el) {
+      var raw = el.tagName === 'INPUT' ? el.value : el.textContent;
+      var n = parseInt(String(raw || '').replace(/[^0-9]/g, ''), 10) || 0;
+      if (n > 0) best = n;
+      if (document.activeElement === el && n > 0) best = n;
+    });
+    return Math.max(1, Math.min(50000, best));
+  }
+  function deckDeriveCarsMath(cars) {
+    cars = Math.max(1, Math.min(50000, Math.round(Number(cars) || 200)));
+    var leadsPerCar = 10;
+    var monthlyLeads = cars * leadsPerCar;
+    return {
+      cars: cars,
+      leadsPerCar: leadsPerCar,
+      monthlyLeads: monthlyLeads,
+      sales: deckRangeFromMid(monthlyLeads * 36),
+      service: deckRangeFromMid(cars * 36)
+    };
+  }
+  /** Mirrors DemoPlatformFunnelPage seamExplainOpen modal */
+  function deckBuildSeamExplainHtml(isService, cars) {
+    var d = deckDeriveCarsMath(cars);
+    var range = isService ? d.service : d.sales;
+    var carsN = d.cars;
+    var monthlyBase = isService ? carsN : d.monthlyLeads;
+    var title = isService
+      ? 'How we estimated service customers in your CRM'
+      : 'How we estimated cold leads in your CRM';
+    var tagline = isService
+      ? 'Cars sold per month, projected over 3 years of DMS history and shown as a range so it reads like an estimate, not a promise. Recalls and overdue work live in that book.'
+      : 'Monthly leads, projected over 3 years of CRM history and shown as a range so it reads like an estimate, not a promise.';
+    var inputs = '<dl class="dpf-coldLeadsExplain-inputs"><div class="dpf-coldLeadsExplain-inputRow"><dt>Cars sold / month</dt><dd>'
+      + deckFormatLeadCount(carsN) + '</dd></div>';
+    if (!isService) {
+      inputs += '<div class="dpf-coldLeadsExplain-inputRow"><dt>Leads per car</dt><dd>'
+        + deckFormatLeadCount(d.leadsPerCar) + '</dd></div>';
+    }
+    inputs += '</dl>';
+    var hint = isService
+      ? '<p class="dpf-coldLeadsExplain-inputHint"><strong>Cars sold / month</strong>: used as a proxy for customers who stay in your DMS and can be reached for recalls and overdue service.</p>'
+      : '<p class="dpf-coldLeadsExplain-inputHint"><strong>Leads per car</strong>: inbound leads (calls, chats, form fills) per car sold, used as a proxy for total lead volume.</p>';
+    var step1 = isService
+      ? ('<p class="dpf-coldLeadsExplain-stepVal"><span class="dpf-coldLeadsExplain-stepHl">'
+        + deckFormatLeadCount(carsN) + ' cars/mo</span></p>')
+      : ('<p class="dpf-coldLeadsExplain-stepVal">' + deckFormatLeadCount(carsN) + ' × '
+        + deckFormatLeadCount(d.leadsPerCar) + ' = <span class="dpf-coldLeadsExplain-stepHl">'
+        + deckFormatLeadCount(d.monthlyLeads) + ' leads/mo</span></p>');
+    var unit = isService ? 'customers' : 'leads';
+    var resultSpan = isService
+      ? 'service customers sitting in your CRM'
+      : 'cold leads sitting in your CRM';
+    return (
+      '<div class="dpf-calcModal-backdrop dpf-coldLeadsExplain-backdrop" role="presentation">'
+      + '<div class="dpf-calcModal dpf-coldLeadsExplain-modal" role="dialog" aria-modal="true" aria-labelledby="dpf-coldLeadsExplain-title">'
+      + '<button type="button" class="dpf-coldLeadsExplain-close" aria-label="Close calculation">×</button>'
+      + '<p class="dpf-coldLeadsExplain-eyebrow">The math</p>'
+      + '<h3 id="dpf-coldLeadsExplain-title" class="dpf-coldLeadsExplain-title">' + title + '</h3>'
+      + '<p class="dpf-coldLeadsExplain-tagline">' + tagline + '</p>'
+      + inputs + hint
+      + '<div class="dpf-coldLeadsExplain-steps" role="list">'
+      + '<div class="dpf-coldLeadsExplain-step" role="listitem"><span class="dpf-coldLeadsExplain-stepNum">01</span><div class="dpf-coldLeadsExplain-stepBody"><p class="dpf-coldLeadsExplain-stepLabel">'
+      + (isService ? 'Monthly cars sold' : 'Monthly leads') + '</p>' + step1 + '</div></div>'
+      + '<div class="dpf-coldLeadsExplain-step" role="listitem"><span class="dpf-coldLeadsExplain-stepNum">02</span><div class="dpf-coldLeadsExplain-stepBody"><p class="dpf-coldLeadsExplain-stepLabel">3-year midpoint</p><p class="dpf-coldLeadsExplain-stepVal">'
+      + deckFormatLeadCount(monthlyBase) + ' × 36 months = <span class="dpf-coldLeadsExplain-stepHl">'
+      + deckFormatLeadCount(range.mid) + ' ' + unit + '</span></p></div></div>'
+      + '<div class="dpf-coldLeadsExplain-step" role="listitem"><span class="dpf-coldLeadsExplain-stepNum">03</span><div class="dpf-coldLeadsExplain-stepBody"><p class="dpf-coldLeadsExplain-stepLabel">Range spread</p><p class="dpf-coldLeadsExplain-stepVal">Applied <span class="dpf-coldLeadsExplain-stepHl">±'
+      + deckFormatLeadCount(range.delta) + '</span> (about a sixth of the midpoint, rounded)</p></div></div>'
+      + '</div>'
+      + '<div class="dpf-coldLeadsExplain-result"><p class="dpf-coldLeadsExplain-resultLabel">Shown on the seam</p>'
+      + '<p class="dpf-coldLeadsExplain-resultVal">' + range.plusLabel + ' <span>' + resultSpan + '</span></p></div>'
+      + '</div></div>'
+    );
+  }
+  function deckUpdateSeamHighlights(cars) {
+    var d = deckDeriveCarsMath(cars);
+    document.querySelectorAll('.dpf-soSeam').forEach(function (seam) {
+      if (!seam.querySelector('.dpf-soSeam-carsInput, .dpf-soSeam-carsValue, .dpf-soSeam-carsTxt')) return;
+      var hi = seam.querySelector('.dpf-soSeam-highlight');
+      if (!hi) return;
+      var isService = !!seam.querySelector('[data-demo-cta="service_customers_calc_open"]');
+      hi.textContent = isService
+        ? (d.service.plusLabel + ' service customers')
+        : (d.sales.plusLabel + ' cold leads');
+    });
+    // Keep both seam inputs + pricing in sync
+    document.querySelectorAll('.dpf-soSeam-carsInput, .dpf-pricing-carsInput').forEach(function (inp) {
+      if (document.activeElement === inp) return;
+      inp.value = String(d.cars);
+    });
+    document.querySelectorAll('.dpf-soSeam-carsValue').forEach(function (el) {
+      el.textContent = String(d.cars);
+    });
+    try { sessionStorage.setItem('deckCarsSeam', String(d.cars)); } catch (e) {}
+    // Live-refresh open math modal
+    var hostEl = document.querySelector('[data-client-deck-overlay-host], .client-deck-overlayHost');
+    if (hostEl && !hostEl.hidden && hostEl.querySelector('.dpf-coldLeadsExplain-modal')) {
+      var title = (hostEl.querySelector('.dpf-coldLeadsExplain-title') || {}).textContent || '';
+      var isService = /service customers/i.test(title);
+      var html = deckBuildSeamExplainHtml(isService, d.cars);
+      hostEl.innerHTML = html;
+      // re-bind close on new nodes happens via openOverlay listeners only once —
+      // re-bind simply here:
+      var root = hostEl.firstElementChild;
+      if (root) {
+        root.addEventListener('click', function (ev) {
+          if (ev.target === root) {
+            hostEl.hidden = true;
+            hostEl.innerHTML = '';
+          }
+        });
+        hostEl.querySelectorAll('.dpf-coldLeadsExplain-close, [aria-label*="Close" i]').forEach(function (btn) {
+          btn.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            hostEl.hidden = true;
+            hostEl.innerHTML = '';
+          });
+        });
+      }
+    }
+    if (window.__deckApplyCarsSeam) {
+      try { window.__deckApplyCarsSeam(d.cars); } catch (e) {}
+    }
+    return d;
+  }
+  window.__deckBuildMetricOverlay = function (cta) {
+    var cars = deckReadCars();
+    if (cta === 'cold_leads_calc_open') return deckBuildSeamExplainHtml(false, cars);
+    if (cta === 'service_customers_calc_open') return deckBuildSeamExplainHtml(true, cars);
+    return null;
+  };
+  window.__deckSeamApplyCars = deckUpdateSeamHighlights;
+
   var host = document.querySelector('[data-client-deck-overlay-host]');
   if (!host) return;
 
@@ -362,6 +529,9 @@ const INTERACTIVITY_JS = `
   }
 
   function openOverlay(cta) {
+    if (window.__deckInlineApplyCars) {
+      try { window.__deckInlineApplyCars(); } catch (e0) {}
+    }
     var html = null;
     if (window.__deckBuildMetricOverlay) {
       try { html = window.__deckBuildMetricOverlay(cta); } catch (err) { html = null; }
@@ -489,7 +659,11 @@ const INTERACTIVITY_JS = `
       if (next == null) next = current;
       current = next;
       input.value = formatCars(next);
-      if (window.__deckApplyCarsSeam) {
+      if (window.__deckSeamApplyCars) {
+        try { window.__deckSeamApplyCars(current); } catch (err) {}
+      } else if (window.__deckInlineApplyCars) {
+        try { window.__deckInlineApplyCars(current); } catch (err) {}
+      } else if (window.__deckApplyCarsSeam) {
         try { window.__deckApplyCarsSeam(current); } catch (err) {}
       }
     }
@@ -525,8 +699,14 @@ const INTERACTIVITY_JS = `
         try { input.setSelectionRange(Math.max(0, caret - delta), Math.max(0, caret - delta)); } catch (err) {}
       }
       var live = parseCars(input.value);
-      if (live != null && window.__deckApplyCarsSeam) {
-        try { window.__deckApplyCarsSeam(live); } catch (err) {}
+      if (live != null) {
+        if (window.__deckSeamApplyCars) {
+          try { window.__deckSeamApplyCars(live); } catch (err) {}
+        } else if (window.__deckInlineApplyCars) {
+          try { window.__deckInlineApplyCars(live); } catch (err) {}
+        } else if (window.__deckApplyCarsSeam) {
+          try { window.__deckApplyCarsSeam(live); } catch (err) {}
+        }
       }
     });
 
@@ -546,6 +726,138 @@ const INTERACTIVITY_JS = `
     mountCarsInput(el);
   });
 
+  // —— Live cars math (seam highlight + info modal), self-contained fallback ——
+  (function wireInlineCarsMath() {
+    var LEADS_PER_CAR = 10;
+
+    function formatLeadCount(n) {
+      var r = Math.round(Number(n) || 0);
+      if (!isFinite(r)) return '—';
+      return r.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    }
+    function floorToNiceZeros(n) {
+      var r = Math.max(0, Math.round(Number(n) || 0));
+      if (!isFinite(r) || r === 0) return 0;
+      var step = r >= 1000 ? 1000 : r >= 100 ? 100 : r >= 10 ? 10 : 1;
+      return Math.floor(r / step) * step;
+    }
+    function formatPlusFloorCount(n) {
+      var r = Math.max(0, Math.round(Number(n) || 0));
+      var floored = floorToNiceZeros(n);
+      if (floored === 0) return '0';
+      var compact = floored >= 1000 && floored % 1000 === 0
+        ? (floored / 1000) + 'K'
+        : floored.toLocaleString('en-US', { maximumFractionDigits: 0 });
+      return r === floored ? ('+' + compact) : (compact + '+');
+    }
+    function rangeFromMid(mid) {
+      var m = Math.max(0, Math.round(Number(mid) || 0));
+      var delta = m > 0 ? Math.max(50, Math.round(m / 6 / 50) * 50) : 0;
+      var lo = Math.max(0, m - delta);
+      return { mid: m, lo: lo, delta: delta, shown: floorToNiceZeros(lo), plusLabel: formatPlusFloorCount(lo) };
+    }
+    function readCars() {
+      var best = 200;
+      try {
+        var stored = parseInt(sessionStorage.getItem('deckCarsSeam') || '', 10);
+        if (stored > 0) best = stored;
+      } catch (e) {}
+      document.querySelectorAll('.dpf-soSeam-carsInput, .dpf-pricing-carsInput, .dpf-soSeam-carsValue').forEach(function (el) {
+        var raw = el.tagName === 'INPUT' ? el.value : el.textContent;
+        var n = parseInt(String(raw || '').replace(/[^0-9]/g, ''), 10) || 0;
+        if (n > 0) best = n;
+      });
+      return Math.max(1, Math.min(50000, best));
+    }
+    function derive(cars) {
+      cars = Math.max(1, Math.min(50000, Math.round(Number(cars) || 200)));
+      var sales = rangeFromMid(cars * LEADS_PER_CAR * 36);
+      var service = rangeFromMid(cars * 36);
+      return { cars: cars, leadsPerCar: LEADS_PER_CAR, monthlyLeads: cars * LEADS_PER_CAR, sales: sales, service: service };
+    }
+    function updateHighlights(d) {
+      document.querySelectorAll('.dpf-soSeam').forEach(function (seam) {
+        if (!seam.querySelector('.dpf-soSeam-carsInput, .dpf-soSeam-carsValue, .dpf-soSeam-carsTxt')) return;
+        var hi = seam.querySelector('.dpf-soSeam-highlight');
+        if (!hi) return;
+        var isService = !!seam.querySelector('[data-demo-cta="service_customers_calc_open"]');
+        hi.textContent = isService
+          ? (d.service.plusLabel + ' service customers')
+          : (d.sales.plusLabel + ' cold leads');
+      });
+    }
+    function buildOverlay(isService, cars) {
+      var d = derive(cars);
+      var range = isService ? d.service : d.sales;
+      var carsN = d.cars;
+      var monthly = isService ? carsN : d.monthlyLeads;
+      var title = isService
+        ? 'How we estimated service customers in your CRM'
+        : 'How we estimated cold leads in your CRM';
+      var tagline = isService ? '' : '<p class="dpf-coldLeadsExplain-tagline">Monthly leads, projected over 3 years of CRM history and shown as a range so it reads like an estimate, not a promise.</p>';
+      var inputs = isService
+        ? ('<dl class="dpf-coldLeadsExplain-inputs"><div class="dpf-coldLeadsExplain-inputRow"><dt>Cars sold / month</dt><dd>' + formatLeadCount(carsN) + '</dd></div></dl><p class="dpf-coldLeadsExplain-inputHint"><strong>Cars sold / month</strong>: used as a proxy for customers who stay in your DMS and can be reached for recalls and overdue service.</p>')
+        : ('<dl class="dpf-coldLeadsExplain-inputs"><div class="dpf-coldLeadsExplain-inputRow"><dt>Cars sold / month</dt><dd>' + formatLeadCount(carsN) + '</dd></div><div class="dpf-coldLeadsExplain-inputRow"><dt>Leads per car</dt><dd>' + d.leadsPerCar + '</dd></div></dl><p class="dpf-coldLeadsExplain-inputHint"><strong>Leads per car</strong>: inbound leads (calls, chats, form fills) per car sold, used as a proxy for total lead volume.</p>');
+      var steps = isService
+        ? ('<div class="dpf-coldLeadsExplain-steps" role="list"><div class="dpf-coldLeadsExplain-step" role="listitem"><span class="dpf-coldLeadsExplain-stepNum">01</span><div class="dpf-coldLeadsExplain-stepBody"><p class="dpf-coldLeadsExplain-stepLabel">Monthly cars sold</p><p class="dpf-coldLeadsExplain-stepVal"><span class="dpf-coldLeadsExplain-stepHl">' + formatLeadCount(carsN) + ' cars/mo</span></p></div></div><div class="dpf-coldLeadsExplain-step" role="listitem"><span class="dpf-coldLeadsExplain-stepNum">02</span><div class="dpf-coldLeadsExplain-stepBody"><p class="dpf-coldLeadsExplain-stepLabel">3-year midpoint</p><p class="dpf-coldLeadsExplain-stepVal">' + formatLeadCount(carsN) + ' × 36 months = <span class="dpf-coldLeadsExplain-stepHl">' + formatLeadCount(range.mid) + ' customers</span></p></div></div><div class="dpf-coldLeadsExplain-step" role="listitem"><span class="dpf-coldLeadsExplain-stepNum">03</span><div class="dpf-coldLeadsExplain-stepBody"><p class="dpf-coldLeadsExplain-stepLabel">Range spread</p><p class="dpf-coldLeadsExplain-stepVal">Applied <span class="dpf-coldLeadsExplain-stepHl">±' + formatLeadCount(range.delta) + '</span> (about a sixth of the midpoint, rounded)</p></div></div></div>')
+        : ('<div class="dpf-coldLeadsExplain-steps" role="list"><div class="dpf-coldLeadsExplain-step" role="listitem"><span class="dpf-coldLeadsExplain-stepNum">01</span><div class="dpf-coldLeadsExplain-stepBody"><p class="dpf-coldLeadsExplain-stepLabel">Monthly leads</p><p class="dpf-coldLeadsExplain-stepVal">' + formatLeadCount(carsN) + ' × ' + d.leadsPerCar + ' = <span class="dpf-coldLeadsExplain-stepHl">' + formatLeadCount(monthly) + ' leads/mo</span></p></div></div><div class="dpf-coldLeadsExplain-step" role="listitem"><span class="dpf-coldLeadsExplain-stepNum">02</span><div class="dpf-coldLeadsExplain-stepBody"><p class="dpf-coldLeadsExplain-stepLabel">3-year midpoint</p><p class="dpf-coldLeadsExplain-stepVal">' + formatLeadCount(monthly) + ' × 36 months = <span class="dpf-coldLeadsExplain-stepHl">' + formatLeadCount(range.mid) + ' leads</span></p></div></div><div class="dpf-coldLeadsExplain-step" role="listitem"><span class="dpf-coldLeadsExplain-stepNum">03</span><div class="dpf-coldLeadsExplain-stepBody"><p class="dpf-coldLeadsExplain-stepLabel">Range spread</p><p class="dpf-coldLeadsExplain-stepVal">Applied <span class="dpf-coldLeadsExplain-stepHl">±' + formatLeadCount(range.delta) + '</span> (about a sixth of the midpoint, rounded)</p></div></div></div>');
+      var suffix = isService ? 'service customers sitting in your CRM' : 'cold leads sitting in your CRM';
+      return '<div class="dpf-calcModal-backdrop dpf-coldLeadsExplain-backdrop" role="presentation"><div class="dpf-calcModal dpf-coldLeadsExplain-modal" role="dialog" aria-modal="true" aria-labelledby="dpf-coldLeadsExplain-title"><button type="button" class="dpf-coldLeadsExplain-close" aria-label="Close calculation">×</button><p class="dpf-coldLeadsExplain-eyebrow">The math</p><h3 id="dpf-coldLeadsExplain-title" class="dpf-coldLeadsExplain-title">' + title + '</h3>' + tagline + inputs + steps + '<div class="dpf-coldLeadsExplain-result"><p class="dpf-coldLeadsExplain-resultLabel">Shown on the seam</p><p class="dpf-coldLeadsExplain-resultVal">' + range.plusLabel + ' <span>' + suffix + '</span></p></div></div></div>';
+    }
+
+    function applyInline(cars) {
+      if (cars == null || cars === '' || !isFinite(Number(cars)) || Number(cars) <= 0) cars = readCars();
+      var d = derive(cars);
+      try { sessionStorage.setItem('deckCarsSeam', String(d.cars)); } catch (e) {}
+      updateHighlights(d);
+      // Prefer modules full sync when available
+      if (window.__deckApplyCarsSeam) {
+        try { window.__deckApplyCarsSeam(d.cars); } catch (e) {}
+      }
+      // Always keep overlay builder current (modules or fallback)
+      window.__deckBuildMetricOverlay = function (cta) {
+        if (cta === 'cold_leads_calc_open') return buildOverlay(false, readCars());
+        if (cta === 'service_customers_calc_open') return buildOverlay(true, readCars());
+        return null;
+      };
+      if (window.__deckInteractionData && window.__deckInteractionData.overlays) {
+        window.__deckInteractionData.overlays.cold_leads_calc_open = buildOverlay(false, d.cars);
+        window.__deckInteractionData.overlays.service_customers_calc_open = buildOverlay(true, d.cars);
+      }
+      return d;
+    }
+
+    window.__deckInlineApplyCars = applyInline;
+    if (!window.__deckBuildMetricOverlay) {
+      window.__deckBuildMetricOverlay = function (cta) {
+        if (cta === 'cold_leads_calc_open') return buildOverlay(false, readCars());
+        if (cta === 'service_customers_calc_open') return buildOverlay(true, readCars());
+        return null;
+      };
+    }
+
+    document.addEventListener('input', function (e) {
+      var t = e.target;
+      if (!t || !t.classList) return;
+      if (!t.classList.contains('dpf-soSeam-carsInput') && !t.classList.contains('dpf-pricing-carsInput')) return;
+      var n = parseInt(String(t.value || '').replace(/[^0-9]/g, ''), 10) || 0;
+      if (n > 0) applyInline(n);
+    }, true);
+
+    document.addEventListener('change', function (e) {
+      var t = e.target;
+      if (!t || !t.classList) return;
+      if (!t.classList.contains('dpf-soSeam-carsInput') && !t.classList.contains('dpf-pricing-carsInput')) return;
+      applyInline(parseInt(String(t.value || '').replace(/[^0-9]/g, ''), 10) || 200);
+    }, true);
+
+    // Patch info-button opens even if modules load late
+    var _open = window.open;
+    setTimeout(function () { applyInline(readCars()); }, 0);
+    setTimeout(function () { applyInline(readCars()); }, 300);
+  })();
+
+
   document.addEventListener('click', function (e) {
     var el = e.target.closest('[data-demo-cta]');
     if (!el) return;
@@ -564,6 +876,40 @@ const INTERACTIVITY_JS = `
       } else {
         startCarsSeamEdit(el.closest('.dpf-soSeam-carsValue') || el);
       }
+      return;
+    }
+    if (cta === 'cold_leads_calc_open' || cta === 'service_customers_calc_open') {
+      e.preventDefault();
+      e.stopPropagation();
+      // Always rebuild from live cars input (production DemoPlatformFunnelPage behavior)
+      var carsNow = (typeof deckReadCars === 'function') ? deckReadCars() : 200;
+      if (window.__deckSeamApplyCars) {
+        try { window.__deckSeamApplyCars(carsNow); } catch (errA) {}
+      }
+      var liveHtml = window.__deckBuildMetricOverlay ? window.__deckBuildMetricOverlay(cta) : null;
+      if (liveHtml) {
+        host.innerHTML = liveHtml;
+        host.hidden = false;
+        var rootLive = host.firstElementChild;
+        if (rootLive) {
+          rootLive.addEventListener('click', function (ev) {
+            if (ev.target === rootLive) {
+              host.hidden = true;
+              host.innerHTML = '';
+            }
+          });
+          host.querySelectorAll('.dpf-coldLeadsExplain-close, [aria-label*="Close" i], [aria-label*="close" i]').forEach(function (btn) {
+            btn.addEventListener('click', function (ev) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              host.hidden = true;
+              host.innerHTML = '';
+            });
+          });
+        }
+        return;
+      }
+      openOverlay(cta);
       return;
     }
     if (DATA.overlays[cta]) {
