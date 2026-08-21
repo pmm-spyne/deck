@@ -302,6 +302,8 @@ const INTERACTIVITY_CSS = `
   z-index: 9999;
 }
 [data-demo-cta] { cursor: pointer; }
+.dpf-soSeam-info, .dpf-soSeam-carsValue, .dpf-soSeam-carsInput { position: relative; z-index: 2; pointer-events: auto; }
+.dpf-soSeam-glow { pointer-events: none !important; }
 .dpf-resources-railBtn { cursor: pointer; }
 .dpf-pPartner-tab { cursor: pointer; }
 .dpf-soChat-listItem { cursor: pointer; }
@@ -482,11 +484,15 @@ const INTERACTIVITY_JS = `
         });
       }
     }
+    // Defer heavy full-deck sync so ⓘ / typing stay responsive on this large HTML file.
     if (window.__deckApplyCarsSeam) {
-      try { window.__deckApplyCarsSeam(d.cars); } catch (e) {}
+      clearTimeout(window.__deckSeamSyncT);
+      window.__deckSeamSyncT = setTimeout(function () {
+        try { window.__deckApplyCarsSeam(d.cars); } catch (e) {}
+      }, 120);
     }
     return d;
-  }
+  };
   window.__deckBuildMetricOverlay = function (cta) {
     var cars = deckReadCars();
     if (cta === 'cold_leads_calc_open') return deckBuildSeamExplainHtml(false, cars);
@@ -529,11 +535,17 @@ const INTERACTIVITY_JS = `
   }
 
   function openOverlay(cta) {
-    if (window.__deckInlineApplyCars) {
-      try { window.__deckInlineApplyCars(); } catch (e0) {}
-    }
     var html = null;
-    if (window.__deckBuildMetricOverlay) {
+    if (/cold_leads_calc_open|service_customers_calc_open/.test(cta)) {
+      try {
+        if (window.__deckBuildMetricOverlay) html = window.__deckBuildMetricOverlay(cta);
+      } catch (err) { html = null; }
+      if (!html && typeof deckBuildSeamExplainHtml === 'function') {
+        try {
+          html = deckBuildSeamExplainHtml(cta === 'service_customers_calc_open', typeof deckReadCars === 'function' ? deckReadCars() : 200);
+        } catch (errB) { html = null; }
+      }
+    } else if (window.__deckBuildMetricOverlay) {
       try { html = window.__deckBuildMetricOverlay(cta); } catch (err) { html = null; }
     }
     if (!html) html = DATA.overlays[cta];
@@ -543,7 +555,7 @@ const INTERACTIVITY_JS = `
     host.addEventListener('click', stopDeckNav);
     var root = host.firstElementChild;
     if (!root) return true;
-    if (window.__deckRefreshMetricOverlay && /cold_leads_calc_open|service_customers_calc_open/.test(cta)) {
+    if (false && window.__deckRefreshMetricOverlay && /cold_leads_calc_open|service_customers_calc_open/.test(cta)) {
       try { window.__deckRefreshMetricOverlay(root); } catch (err) {}
       requestAnimationFrame(function () {
         try { window.__deckRefreshMetricOverlay(root); } catch (err2) {}
@@ -810,9 +822,12 @@ const INTERACTIVITY_JS = `
       var d = derive(cars);
       try { sessionStorage.setItem('deckCarsSeam', String(d.cars)); } catch (e) {}
       updateHighlights(d);
-      // Prefer modules full sync when available
+      // Prefer modules full sync when available (deferred — sync DOM work freezes this deck)
       if (window.__deckApplyCarsSeam) {
-        try { window.__deckApplyCarsSeam(d.cars); } catch (e) {}
+        clearTimeout(window.__deckInlineSyncT);
+        window.__deckInlineSyncT = setTimeout(function () {
+          try { window.__deckApplyCarsSeam(d.cars); } catch (e) {}
+        }, 120);
       }
       // Always keep overlay builder current (modules or fallback)
       window.__deckBuildMetricOverlay = function (cta) {
@@ -881,35 +896,38 @@ const INTERACTIVITY_JS = `
     if (cta === 'cold_leads_calc_open' || cta === 'service_customers_calc_open') {
       e.preventDefault();
       e.stopPropagation();
-      // Always rebuild from live cars input (production DemoPlatformFunnelPage behavior)
-      var carsNow = (typeof deckReadCars === 'function') ? deckReadCars() : 200;
-      if (window.__deckSeamApplyCars) {
-        try { window.__deckSeamApplyCars(carsNow); } catch (errA) {}
+      // Build overlay only — never run full-deck cars sync here (it freezes the huge HTML deck).
+      var liveHtml = null;
+      try {
+        if (window.__deckBuildMetricOverlay) liveHtml = window.__deckBuildMetricOverlay(cta);
+      } catch (errBuild) { liveHtml = null; }
+      if (!liveHtml && typeof deckBuildSeamExplainHtml === 'function') {
+        try {
+          var carsNow = (typeof deckReadCars === 'function') ? deckReadCars() : 200;
+          liveHtml = deckBuildSeamExplainHtml(cta === 'service_customers_calc_open', carsNow);
+        } catch (err2) { liveHtml = null; }
       }
-      var liveHtml = window.__deckBuildMetricOverlay ? window.__deckBuildMetricOverlay(cta) : null;
-      if (liveHtml) {
-        host.innerHTML = liveHtml;
-        host.hidden = false;
-        var rootLive = host.firstElementChild;
-        if (rootLive) {
-          rootLive.addEventListener('click', function (ev) {
-            if (ev.target === rootLive) {
-              host.hidden = true;
-              host.innerHTML = '';
-            }
+      if (!liveHtml) liveHtml = DATA.overlays[cta];
+      if (!liveHtml) return;
+      host.innerHTML = liveHtml;
+      host.hidden = false;
+      var rootLive = host.firstElementChild;
+      if (rootLive) {
+        rootLive.addEventListener('click', function (ev) {
+          if (ev.target === rootLive) {
+            host.hidden = true;
+            host.innerHTML = '';
+          }
+        });
+        host.querySelectorAll('.dpf-coldLeadsExplain-close, [aria-label*="Close"], [aria-label*="close"]').forEach(function (btn) {
+          btn.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            host.hidden = true;
+            host.innerHTML = '';
           });
-          host.querySelectorAll('.dpf-coldLeadsExplain-close, [aria-label*="Close" i], [aria-label*="close" i]').forEach(function (btn) {
-            btn.addEventListener('click', function (ev) {
-              ev.preventDefault();
-              ev.stopPropagation();
-              host.hidden = true;
-              host.innerHTML = '';
-            });
-          });
-        }
-        return;
+        });
       }
-      openOverlay(cta);
       return;
     }
     if (DATA.overlays[cta]) {
