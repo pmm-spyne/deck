@@ -1,0 +1,481 @@
+/**
+ * Export the full pitch demo (allAgents) as one standalone HTML deck.
+ *
+ * Usage:
+ *   node docs/client-deck/export-client-deck-html.mjs
+ *   EXPORT_BASE_URL=http://127.0.0.1:5174 node docs/client-deck/export-client-deck-html.mjs
+ */
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright';
+import { injectStudioOsIntoDeckHtml } from './studio-os-slides.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(__dirname, '..', '..');
+const OUT_DIR = join(__dirname);
+const OUT_PATH = join(OUT_DIR, 'client-deck.html');
+const BASE = process.env.EXPORT_BASE_URL || 'http://127.0.0.1:5174';
+const WIDTH = 1920;
+const HEIGHT = 1080;
+
+const HIDE_CHROME = `
+  .dpf-prodIndex,
+  .dpf-secNav,
+  .dpf-topbarReveal,
+  .dpf-engagement,
+  [data-demo-cta="modify_metrics"] {
+    display: none !important;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #fff;
+  }
+  .dpf-pitchDeck {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+  }
+  .dpf-pitchDeck-frame {
+    display: none;
+  }
+  .dpf-pitchDeck-frame.is-on {
+    display: block !important;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+  .client-deck-hud {
+    position: fixed;
+    right: 18px;
+    bottom: 16px;
+    z-index: 90;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    background: rgba(20, 18, 26, 0.78);
+    color: #fff;
+    font: 600 12px/1.2 Inter, system-ui, sans-serif;
+    letter-spacing: 0.04em;
+    pointer-events: none;
+    user-select: none;
+  }
+  /* DMS Analysis — campaign types only (V1-style list; CRM Analysis untouched) */
+  .cad--typesOnly .cad-scan,
+  .cad--typesOnly .cad-replay,
+  .cad--typesOnly .cad-stats,
+  .cad--typesOnly .cad-note,
+  .cad--typesOnly .cad-cNum,
+  .cad--typesOnly .cad-cSpan {
+    display: none !important;
+  }
+  .cad--typesOnly .cad-tHead,
+  .cad--typesOnly .cad-tRow {
+    grid-template-columns: 28px minmax(0, 1fr) !important;
+  }
+  .cad--typesOnly .cad-tHead span:first-child {
+    grid-column: 1 / 3;
+  }
+  /* Closing block — single call recording link */
+  .dpf-viniDoV2--singleLink .dpf-viniDoV2-inner {
+    max-width: 640px;
+  }
+  .dpf-clientRecLink {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 28px;
+    padding: 28px 32px;
+    border-radius: 18px;
+    border: 1px solid #ebe4f8;
+    background: linear-gradient(180deg, #ffffff 0%, #faf7ff 100%);
+    box-shadow: 0 10px 28px rgba(88, 48, 160, 0.08);
+    text-decoration: none;
+    color: inherit;
+  }
+  .dpf-clientRecLink-tag {
+    display: inline-flex;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: #7c3aed;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .dpf-clientRecLink-title {
+    font-family: "Plus Jakarta Sans", Inter, system-ui, sans-serif;
+    font-size: clamp(22px, 2.4vw, 30px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: #17131f;
+  }
+  .dpf-clientRecLink-meta {
+    font-size: 13px;
+    font-weight: 500;
+    color: #6f6a80;
+  }
+  .dpf-clientRecLink-cta {
+    margin-top: 6px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #7537e0;
+  }
+`;
+
+const DECK_SCRIPT = `
+(function () {
+  var frames = Array.prototype.slice.call(document.querySelectorAll('.dpf-pitchDeck-frame'));
+  var fill = document.querySelector('.dpf-pitchDeck-progressFill');
+  var hud = document.querySelector('[data-client-deck-hud]');
+  var i = 0;
+  function show(next) {
+    if (!frames.length) return;
+    i = Math.max(0, Math.min(frames.length - 1, next));
+    frames.forEach(function (frame, idx) {
+      var on = idx === i;
+      frame.classList.toggle('is-on', on);
+      frame.setAttribute('aria-hidden', on ? 'false' : 'true');
+    });
+    if (fill) {
+      fill.style.width = (frames.length > 1 ? (i / (frames.length - 1)) * 100 : 100) + '%';
+    }
+    if (hud) hud.textContent = (i + 1) + ' / ' + frames.length;
+    try { history.replaceState(null, '', '#slide-' + (i + 1)); } catch (e) {}
+  }
+  function fromHash() {
+    var m = (location.hash || '').match(/slide-(\\d+)/i);
+    return m ? parseInt(m[1], 10) - 1 : 0;
+  }
+  document.addEventListener('keydown', function (e) {
+    var tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+      e.preventDefault();
+      show(i + 1);
+    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+      e.preventDefault();
+      show(i - 1);
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      show(0);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      show(frames.length - 1);
+    }
+  });
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('button, a, input, select, textarea, [role="button"]')) return;
+    var x = e.clientX / window.innerWidth;
+    if (x > 0.62) show(i + 1);
+    else if (x < 0.38) show(i - 1);
+  });
+  show(fromHash());
+})();
+`;
+
+async function collectCss(page) {
+  return page.evaluate(async () => {
+    const chunks = [];
+    for (const sheet of [...document.styleSheets]) {
+      try {
+        for (const rule of sheet.cssRules) chunks.push(rule.cssText);
+      } catch {
+        try {
+          const res = await fetch(sheet.href);
+          if (res.ok) chunks.push(await res.text());
+        } catch {
+          /* cross-origin or missing */
+        }
+      }
+    }
+    for (const tag of document.querySelectorAll('style')) {
+      if (tag.textContent) chunks.push(tag.textContent);
+    }
+    return chunks.join('\n');
+  });
+}
+
+async function inlineAssets(page, html, baseUrl) {
+  const urls = [...html.matchAll(/(?:src|href)="(\/[^"]+)"/g)].map((m) => m[1]);
+  const unique = [...new Set(urls.filter((u) => !u.endsWith('.html')))];
+  let out = html;
+  for (const path of unique) {
+    try {
+      const res = await page.request.get(`${baseUrl}${path}`);
+      if (!res.ok()) continue;
+      const buf = await res.body();
+      const ct = res.headers()['content-type'] || 'application/octet-stream';
+      const b64 = buf.toString('base64');
+      const dataUrl = `data:${ct};base64,${b64}`;
+      out = out.split(`"${path}"`).join(`"${dataUrl}"`);
+      out = out.split(`'${path}'`).join(`'${dataUrl}'`);
+      out = out.split(`url(${path})`).join(`url(${dataUrl})`);
+    } catch {
+      /* skip missing assets */
+    }
+  }
+  return out;
+}
+
+async function captureActiveFrame(page) {
+  return page.evaluate(() => {
+    const frame = document.querySelector('.dpf-pitchDeck-frame.is-on');
+    if (!frame) return '';
+    const clone = frame.cloneNode(true);
+    clone.classList.remove('is-on');
+    clone.setAttribute('aria-hidden', 'true');
+    const liveCanvases = [...frame.querySelectorAll('canvas')];
+    const cloneCanvases = [...clone.querySelectorAll('canvas')];
+    liveCanvases.forEach((canvas, idx) => {
+      const target = cloneCanvases[idx];
+      if (!target) return;
+      try {
+        const img = document.createElement('img');
+        img.src = canvas.toDataURL('image/png');
+        img.alt = '';
+        img.className = canvas.className;
+        if (canvas.getAttribute('style')) img.setAttribute('style', canvas.getAttribute('style'));
+        img.width = canvas.width;
+        img.height = canvas.height;
+        target.replaceWith(img);
+      } catch {
+        /* tainted canvas */
+      }
+    });
+    return clone.outerHTML;
+  });
+}
+
+mkdirSync(OUT_DIR, { recursive: true });
+
+const browser = await chromium.launch({ headless: true });
+const page = await browser.newPage({
+  viewport: { width: WIDTH, height: HEIGHT },
+  deviceScaleFactor: 1,
+});
+
+await page.route('**/api/**', (route) =>
+  route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: '{}',
+  }),
+);
+
+await page.goto(`${BASE}/v2-export/user?allAgents=1&slide=0`, {
+  waitUntil: 'networkidle',
+  timeout: 60_000,
+});
+await page.waitForSelector('.dpf-pitchDeck-frame.is-on [data-pitch-slide]', { timeout: 30_000 });
+await page.addStyleTag({ content: HIDE_CHROME });
+await page.evaluate(() => document.fonts.ready).catch(() => {});
+await page.waitForTimeout(500);
+
+const labels = await page.$$eval('[data-pitch-slide]', (els) =>
+  els.map((el, i) => el.getAttribute('data-pitch-label') || `Slide ${i + 1}`),
+);
+
+if (!labels.length) {
+  throw new Error('No pitch slides found. Is the v2 deck rendering?');
+}
+
+const frames = [];
+for (let idx = 0; idx < labels.length; idx += 1) {
+  if (idx > 0) {
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(
+      (want) => {
+        const on = document.querySelector('.dpf-pitchDeck-frame.is-on [data-pitch-slide]');
+        const all = [...document.querySelectorAll('[data-pitch-slide]')];
+        return on && all.indexOf(on) === want;
+      },
+      idx,
+      { timeout: 12_000 },
+    );
+  }
+  await page.evaluate(() => document.fonts.ready).catch(() => {});
+  await page.waitForTimeout(350);
+
+  // CRM / DMS Analysis open on a scanning takeover; skip to the result table
+  // so the static deck shows the analysis slide, not the loading state.
+  const hasScan = await page.$('.dpf-pitchDeck-frame.is-on .cad--scan .cad-scan');
+  if (hasScan) {
+    await hasScan.click({ force: true });
+    await page.waitForSelector('.dpf-pitchDeck-frame.is-on .cad-result', {
+      timeout: 8_000,
+    });
+    await page.waitForTimeout(250);
+  }
+
+  // How it works: collapse every step so the client deck is static (no open accordion).
+  await page.evaluate(() => {
+    const root = document.querySelector('.dpf-pitchDeck-frame.is-on');
+    if (!root?.querySelector('.dpf-soHow-steps')) return;
+    root.querySelectorAll('.dpf-soHow-step--active').forEach((el) => {
+      el.classList.remove('dpf-soHow-step--active');
+      el.setAttribute('aria-selected', 'false');
+      el.setAttribute('aria-expanded', 'false');
+      el.querySelectorAll('.dpf-soHow-stepBody, .dpf-soHow-stepChips').forEach((n) => n.remove());
+    });
+  });
+
+  // DMS Analysis only: campaign types list (V1-style). Do not touch CRM Analysis.
+  await page.evaluate(() => {
+    const root = document.querySelector('.dpf-pitchDeck-frame.is-on');
+    const label = root?.querySelector('[data-pitch-label]')?.getAttribute('data-pitch-label');
+    if (label !== 'DMS Analysis') return;
+    const cad = root.querySelector('.cad');
+    if (!cad) return;
+    cad.classList.add('cad--typesOnly');
+    cad.classList.remove('cad--leadTiers', 'cad--scan');
+    root.querySelector('.cad-scan')?.remove();
+    root.querySelector('.cad-replay')?.remove();
+    root.querySelector('.cad-stats')?.remove();
+    root.querySelector('.cad-note')?.remove();
+    root.querySelectorAll('.cad-tHead .cad-cNum, .cad-tRow .cad-cNum, .cad-tHead .cad-cSpan, .cad-tRow .cad-cSpan').forEach((n) => n.remove());
+    // Keep header as a single "Campaign type" label
+    const head = root.querySelector('.cad-tHead');
+    if (head) {
+      head.querySelectorAll('[role="columnheader"]').forEach((el, i) => {
+        if (i > 0) el.remove();
+      });
+    }
+  });
+
+  // Vini Set-Up: show IMS as API (not Concierge) for the client deck.
+  await page.evaluate(() => {
+    const root = document.querySelector('.dpf-pitchDeck-frame.is-on');
+    const label = root?.querySelector('[data-pitch-label]')?.getAttribute('data-pitch-label');
+    if (label !== 'Vini Set-Up') return;
+    root.querySelectorAll('.viniSetupPage-intCard.is-concierge').forEach((card) => {
+      const name = card.querySelector('.viniSetupPage-intName')?.textContent || '';
+      if (!/IMS/i.test(name)) return;
+      card.classList.remove('is-concierge');
+      card.classList.add('is-api');
+      const mode = card.querySelector('.viniSetupPage-intMode');
+      if (mode) mode.textContent = 'API';
+    });
+  });
+
+  // Closing block: replace multi-recording player with one Google Vids link.
+  await page.evaluate(() => {
+    const root = document.querySelector('.dpf-pitchDeck-frame.is-on');
+    const label = root?.querySelector('[data-pitch-label]')?.getAttribute('data-pitch-label');
+    if (label !== 'Closing block') return;
+    const lead = root.querySelector('.dpf-resources-lead');
+    if (lead) {
+      lead.textContent =
+        'One call recording, plus integrations, case studies, compliance, and more — jump in during the conversation.';
+    }
+    const railLabel = root.querySelector('.dpf-resources-railBtn.is-on span:last-child');
+    if (railLabel && /Call Recordings/i.test(railLabel.textContent || '')) {
+      railLabel.textContent = 'Call recording';
+    }
+    const panel = root.querySelector('.dpf-resources-panel.is-on');
+    if (!panel) return;
+    const url =
+      'https://docs.google.com/videos/d/14eas3hl8YXbKuHHkZYkXPr2MxjjtPr_4QyQl687cb7U/edit?scene=id.p#scene=id.p';
+    panel.innerHTML = `
+      <section class="dpf-viniDoV2 dpf-viniDoV2--singleLink" aria-labelledby="dpf-viniDo-heading">
+        <div class="dpf-viniDoV2-inner">
+          <h2 id="dpf-viniDo-heading" class="dpf-viniDoV2-title">Proof, not pitch</h2>
+          <p class="dpf-viniDoV2-sub">Hear Vini on a real sales inbound call.</p>
+          <a class="dpf-clientRecLink" href="${url}" target="_blank" rel="noopener noreferrer">
+            <span class="dpf-clientRecLink-tag">Sales Inbound</span>
+            <span class="dpf-clientRecLink-title">Vini Sales Recording</span>
+            <span class="dpf-clientRecLink-meta">Google Vids · open to play</span>
+            <span class="dpf-clientRecLink-cta">Open call recording →</span>
+          </a>
+        </div>
+      </section>`;
+  });
+
+  // Skip Service Outbound Impact + Tech stack for the client deck.
+  const labelNow = labels[idx];
+  const frameHtml = await captureActiveFrame(page);
+  if (
+    labelNow === 'Impact' &&
+    (frameHtml.includes('Service Outbound delivers') ||
+      frameHtml.includes('Vini Service Outbound delivers'))
+  ) {
+    console.log(`skipped ${idx + 1}/${labels.length}: ${labelNow} (service)`);
+    continue;
+  }
+  if (labelNow === 'Tech stack') {
+    console.log(`skipped ${idx + 1}/${labels.length}: ${labelNow}`);
+    continue;
+  }
+
+  const html = frameHtml;
+  frames.push(html);
+  console.log(`captured ${idx + 1}/${labels.length}: ${labels[idx]}`);
+}
+
+const css = await collectCss(page);
+
+const firstOn = frames
+  .map((html, idx) =>
+    idx === 0
+      ? html.replace('class="dpf-pitchDeck-frame"', 'class="dpf-pitchDeck-frame is-on"')
+      : html,
+  )
+  .join('\n');
+
+let body = `<div class="dpf-pitchDeck" aria-label="Client pitch deck">
+  <div class="dpf-pitchDeck-stage" aria-live="polite">
+${firstOn}
+  </div>
+  <div class="dpf-pitchDeck-nav" aria-hidden="true">
+    <div class="dpf-pitchDeck-progress">
+      <span class="dpf-pitchDeck-progressFill" style="width: 0%"></span>
+    </div>
+  </div>
+  <div class="client-deck-hud" data-client-deck-hud>1 / ${frames.length}</div>
+</div>
+<script>${DECK_SCRIPT}</script>`;
+
+body = await inlineAssets(page, body, BASE);
+const cssInlined = await inlineAssets(page, css, BASE);
+await browser.close();
+
+const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=${WIDTH}, height=${HEIGHT}, initial-scale=1" />
+  <title>Vini client deck</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>${HIDE_CHROME}\n${cssInlined}</style>
+</head>
+<body>
+${body}
+</body>
+</html>`;
+
+writeFileSync(OUT_PATH, html, 'utf8');
+console.log(`\nWrote ${labels.length} slides → ${OUT_PATH}`);
+console.log(labels.map((label, i) => `${i + 1}. ${label}`).join('\n'));
+
+// Append Studio OS merchandising block after Pricing (client-deck-only).
+{
+  const withStudio = injectStudioOsIntoDeckHtml(html);
+  writeFileSync(OUT_PATH, withStudio, 'utf8');
+  const studioLabels = [...withStudio.matchAll(/data-pitch-label="([^"]+)"/g)].map((m) => m[1]);
+  console.log(`\nInjected Studio OS → ${studioLabels.length} slides total`);
+  console.log(studioLabels.map((label, i) => `${i + 1}. ${label}`).join('\n'));
+}
