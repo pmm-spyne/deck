@@ -305,6 +305,16 @@ const INTERACTIVITY_CSS = `
 .dpf-resources-railBtn { cursor: pointer; }
 .dpf-pPartner-tab { cursor: pointer; }
 .dpf-soChat-listItem { cursor: pointer; }
+.dpf-soSeam-carsInput {
+  cursor: text !important;
+  caret-color: #fff;
+  width: 4.8ch;
+  max-width: 6.5ch;
+}
+.dpf-soSeam-carsInput:focus {
+  outline: none;
+}
+
 `;
 
 const payload = {
@@ -315,7 +325,8 @@ const payload = {
 
 const INTERACTIVITY_JS = `
 (function () {
-  var DATA = ${JSON.stringify(payload)};
+  var dataEl = document.getElementById('client-deck-interaction-data');
+  var DATA = dataEl ? JSON.parse(dataEl.textContent) : { overlays: {}, chatPreviews: {}, partnerPanels: {} };
   var host = document.querySelector('[data-client-deck-overlay-host]');
   if (!host) return;
 
@@ -434,6 +445,89 @@ const INTERACTIVITY_JS = `
     });
   });
 
+  function formatCars(n) {
+    return String(Math.round(n)).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',');
+  }
+
+  function parseCars(text) {
+    var n = parseInt(String(text || '').replace(/[^0-9]/g, ''), 10);
+    if (!isFinite(n) || n < 1) return null;
+    if (n > 99999) n = 99999;
+    return n;
+  }
+
+  function mountCarsInput(fromEl) {
+    if (!fromEl || fromEl.getAttribute('data-cars-mounted') === '1') return fromEl;
+    var sourceText = fromEl.tagName === 'INPUT' ? fromEl.value : fromEl.textContent;
+    var current = parseCars(sourceText) || 200;
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.inputMode = 'numeric';
+    input.pattern = '[0-9]*';
+    input.className = 'dpf-soSeam-carsInput';
+    input.value = String(current);
+    input.setAttribute('data-cars-mounted', '1');
+    input.setAttribute('data-demo-cta', 'cars_seam_edit_open');
+    input.setAttribute('aria-label', fromEl.getAttribute('aria-label') || 'Edit cars sold per month');
+    input.setAttribute('title', 'Type a number — saved until you refresh');
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('spellcheck', 'false');
+
+    function commit() {
+      var next = parseCars(input.value);
+      if (next == null) next = current;
+      current = next;
+      input.value = formatCars(next);
+    }
+
+    ['pointerdown', 'mousedown', 'click', 'mouseup', 'touchstart'].forEach(function (type) {
+      input.addEventListener(type, function (ev) { ev.stopPropagation(); }, true);
+    });
+    input.addEventListener('keydown', function (ev) {
+      ev.stopPropagation();
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        commit();
+        input.blur();
+      } else if (ev.key === 'Escape') {
+        ev.preventDefault();
+        input.value = formatCars(current);
+        input.blur();
+      }
+    });
+    input.addEventListener('focus', function () {
+      var raw = parseCars(input.value);
+      input.value = raw != null ? String(raw) : '';
+      setTimeout(function () { try { input.select(); } catch (err) {} }, 0);
+    });
+    input.addEventListener('blur', commit);
+    input.addEventListener('input', function () {
+      var caret = input.selectionStart;
+      var before = input.value;
+      var cleaned = before.replace(/[^0-9]/g, '').slice(0, 5);
+      if (cleaned !== before) {
+        input.value = cleaned;
+        var delta = before.length - cleaned.length;
+        try { input.setSelectionRange(Math.max(0, caret - delta), Math.max(0, caret - delta)); } catch (err) {}
+      }
+    });
+
+    if (fromEl.parentElement) fromEl.replaceWith(input);
+    return input;
+  }
+
+  function startCarsSeamEdit(btn) {
+    var input = mountCarsInput(btn);
+    if (input && input.focus) {
+      input.focus();
+      try { input.select(); } catch (err) {}
+    }
+  }
+
+  document.querySelectorAll('.dpf-soSeam-carsValue, input.dpf-soSeam-carsInput').forEach(function (el) {
+    mountCarsInput(el);
+  });
+
   document.addEventListener('click', function (e) {
     var el = e.target.closest('[data-demo-cta]');
     if (!el) return;
@@ -442,7 +536,18 @@ const INTERACTIVITY_JS = `
     if (cta.indexOf('Case Studies:') === 0) return;
     if (cta.indexOf('Customer Demo:') === 0) return;
     if (cta.indexOf('_sample_chat_') !== -1) return;
-    if (cta === 'cars_seam_edit_open' || cta === 'modify_metrics') return;
+    if (cta === 'modify_metrics') return;
+    if (cta === 'cars_seam_edit_open') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (el.tagName === 'INPUT') {
+        el.focus();
+        try { el.select(); } catch (err) {}
+      } else {
+        startCarsSeamEdit(el.closest('.dpf-soSeam-carsValue') || el);
+      }
+      return;
+    }
     if (DATA.overlays[cta]) {
       e.preventDefault();
       e.stopPropagation();
@@ -451,8 +556,9 @@ const INTERACTIVITY_JS = `
   }, true);
 
   document.querySelectorAll('[data-demo-cta$="_open"]').forEach(function (el) {
-    if (!el.getAttribute('title') && /impact_table_open|calc_open|why_outbound|sample_chats|product_demo/.test(el.getAttribute('data-demo-cta') || '')) {
-      el.style.cursor = 'pointer';
+    el.style.cursor = 'pointer';
+    if (!el.getAttribute('title') && /impact_table_open|calc_open|why_outbound|sample_chats|product_demo|cars_seam/.test(el.getAttribute('data-demo-cta') || '')) {
+      el.setAttribute('title', 'Click to open');
     }
   });
 })();

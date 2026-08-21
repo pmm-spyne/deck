@@ -69,16 +69,27 @@ const HIDE_CHROME = `
     pointer-events: none;
     user-select: none;
   }
-  /* —— Phone / tablet: PDF-like vertical page stack (desktop unchanged) —— */
-  html[data-deck-mode="pdf"],
-  html[data-deck-mode="pdf"] body {
-    overflow: auto !important;
-    overflow-x: hidden !important;
+  /* —— Phone / tablet: native vertical scroll (desktop unchanged) —— */
+  html[data-deck-mode="pdf"] {
     height: auto !important;
     min-height: 100% !important;
     background: #525659 !important;
+    /* Do NOT set overflow-x:hidden on html/body — breaks iOS momentum scroll */
+    overflow-y: scroll !important;
+    overflow-x: auto !important;
     -webkit-overflow-scrolling: touch;
-    overscroll-behavior-y: contain;
+    overscroll-behavior-y: auto;
+    touch-action: pan-y pinch-zoom;
+    scroll-snap-type: y proximity;
+  }
+  html[data-deck-mode="pdf"] body {
+    height: auto !important;
+    min-height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #525659 !important;
+    touch-action: pan-y pinch-zoom;
   }
   html[data-deck-mode="pdf"] .dpf-pitchDeck {
     position: relative !important;
@@ -89,19 +100,22 @@ const HIDE_CHROME = `
     min-height: 0 !important;
     margin: 0 auto;
     background: #525659 !important;
-    padding: 20px 0 96px !important;
+    padding: 12px 0 calc(72px + env(safe-area-inset-bottom, 0px)) !important;
     box-sizing: border-box;
+    overflow: visible !important;
+    touch-action: pan-y pinch-zoom;
   }
   html[data-deck-mode="pdf"] .dpf-pitchDeck-stage {
     position: relative !important;
     display: flex !important;
     flex-direction: column !important;
     align-items: center !important;
-    gap: 18px !important;
+    gap: 12px !important;
     width: 1920px !important;
     height: auto !important;
     overflow: visible !important;
     background: transparent !important;
+    touch-action: pan-y pinch-zoom;
   }
   html[data-deck-mode="pdf"] .dpf-pitchDeck-frame,
   html[data-deck-mode="pdf"] .dpf-pitchDeck-frame.is-on {
@@ -117,13 +131,23 @@ const HIDE_CHROME = `
     z-index: 1 !important;
     overflow: hidden !important;
     background: #fff !important;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
     flex: 0 0 auto !important;
     transition: none !important;
+    scroll-snap-align: start;
+    scroll-snap-stop: normal;
+    content-visibility: auto;
+    contain-intrinsic-size: 1920px 1080px;
+    touch-action: pan-y pinch-zoom;
   }
   html[data-deck-mode="pdf"] .dpf-pitchDeck-frame > .dpf-pitchSlide {
     width: 1920px !important;
     height: 1080px !important;
+    touch-action: pan-y pinch-zoom;
+  }
+  /* Let the page scroll; avoid nested scroll traps on mobile */
+  html[data-deck-mode="pdf"] .dpf-pitchSlide--scroll {
+    overflow: hidden !important;
   }
   html[data-deck-mode="pdf"] .dpf-pitchDeck-nav {
     position: fixed !important;
@@ -132,6 +156,7 @@ const HIDE_CHROME = `
     top: 0 !important;
     bottom: auto !important;
     z-index: 200 !important;
+    pointer-events: none !important;
   }
   html[data-deck-mode="pdf"] .dpf-pitchDeck-progress {
     height: 3px !important;
@@ -141,7 +166,8 @@ const HIDE_CHROME = `
     bottom: max(12px, env(safe-area-inset-bottom)) !important;
     font-size: 11px !important;
     padding: 6px 10px !important;
-    opacity: 0.92;
+    opacity: 0.9;
+    pointer-events: none !important;
   }
   html[data-deck-mode="pdf"] .client-deck-overlayHost,
   html[data-deck-mode="pdf"] .client-deck-overlayHost .dpf-calcModal-backdrop,
@@ -157,6 +183,7 @@ const HIDE_CHROME = `
     max-height: 100dvh !important;
     overflow: auto !important;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y pinch-zoom;
   }
   /* DMS Analysis — campaign types only (V1-style list; CRM Analysis untouched) */
   .cad--typesOnly .cad-scan,
@@ -283,18 +310,29 @@ const DECK_SCRIPT = `
   var hud = document.querySelector('[data-client-deck-hud]');
   var i = 0;
   var scrollT = null;
+  var scrolling = false;
 
   function isPdf() {
     return document.documentElement.getAttribute('data-deck-mode') === 'pdf';
   }
 
-  function setChrome(idx) {
+  function setChrome(idx, writeHash) {
     i = idx;
     if (fill) {
       fill.style.width = (frames.length > 1 ? (i / (frames.length - 1)) * 100 : 100) + '%';
     }
     if (hud) hud.textContent = (i + 1) + ' / ' + frames.length;
-    try { history.replaceState(null, '', '#slide-' + (i + 1)); } catch (e) {}
+    if (writeHash !== false) {
+      try { history.replaceState(null, '', '#slide-' + (i + 1)); } catch (e) {}
+    }
+  }
+
+  function revealAllPdfPages() {
+    frames.forEach(function (frame, idx) {
+      frame.classList.add('is-on');
+      frame.setAttribute('aria-hidden', 'false');
+      frame.setAttribute('data-pdf-page', String(idx + 1));
+    });
   }
 
   function showDeck(next) {
@@ -308,23 +346,20 @@ const DECK_SCRIPT = `
     setChrome(i);
   }
 
-  function showPdf(next, smooth) {
+  function jumpPdf(next, smooth) {
     if (!frames.length) return;
     i = Math.max(0, Math.min(frames.length - 1, next));
-    frames.forEach(function (frame, idx) {
-      frame.classList.add('is-on');
-      frame.setAttribute('aria-hidden', 'false');
-      frame.setAttribute('data-pdf-page', String(idx + 1));
-    });
+    revealAllPdfPages();
     setChrome(i);
     var target = frames[i];
-    if (target && target.scrollIntoView) {
-      target.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
-    }
+    if (!target || !target.scrollIntoView) return;
+    scrolling = true;
+    target.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+    setTimeout(function () { scrolling = false; }, smooth ? 450 : 80);
   }
 
   function show(next, smooth) {
-    if (isPdf()) showPdf(next, !!smooth);
+    if (isPdf()) jumpPdf(next, !!smooth);
     else showDeck(next);
   }
 
@@ -334,19 +369,31 @@ const DECK_SCRIPT = `
   }
 
   function syncFromScroll() {
-    if (!isPdf() || !frames.length) return;
-    var mid = window.scrollY + window.innerHeight * 0.35;
+    if (!isPdf() || !frames.length || scrolling) return;
+    var y = window.scrollY || window.pageYOffset || 0;
+    var viewH = window.innerHeight || 1;
+    var mid = y + viewH * 0.4;
     var best = 0;
     var bestDist = Infinity;
     for (var n = 0; n < frames.length; n++) {
       var top = frames[n].offsetTop;
-      var dist = Math.abs(top - mid + frames[n].offsetHeight * 0.2);
+      var dist = Math.abs(top - mid);
       if (dist < bestDist) { bestDist = dist; best = n; }
     }
-    if (best !== i) setChrome(best);
+    if (best !== i) setChrome(best, true);
+  }
+
+  function onModeChange() {
+    if (isPdf()) {
+      revealAllPdfPages();
+      setChrome(Math.max(0, Math.min(frames.length - 1, i)), false);
+    } else {
+      showDeck(i);
+    }
   }
 
   document.addEventListener('keydown', function (e) {
+    if (isPdf()) return; // phone/tablet: native scroll only
     var tag = (e.target && e.target.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
     if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
@@ -365,27 +412,38 @@ const DECK_SCRIPT = `
   });
 
   document.addEventListener('click', function (e) {
-    if (isPdf()) return;
+    if (isPdf()) return; // phone/tablet: flick/scroll, no tap-to-advance
     if (e.target.closest('button, a, input, select, textarea, [role="button"], [data-demo-cta]')) return;
     var x = e.clientX / window.innerWidth;
     if (x > 0.62) show(i + 1);
     else if (x < 0.38) show(i - 1);
-  });
+  }, { passive: true });
 
   window.addEventListener('scroll', function () {
     if (!isPdf()) return;
     clearTimeout(scrollT);
-    scrollT = setTimeout(syncFromScroll, 60);
+    scrollT = setTimeout(syncFromScroll, 40);
   }, { passive: true });
 
+  // Do not scrollIntoView on resize — that fights finger scrolling
   window.addEventListener('resize', function () {
     clearTimeout(window.__deckNavResizeT);
-    window.__deckNavResizeT = setTimeout(function () {
-      show(i, false);
-    }, 140);
-  });
+    window.__deckNavResizeT = setTimeout(onModeChange, 140);
+  }, { passive: true });
 
-  show(fromHash(), false);
+  var startIdx = fromHash();
+  if (isPdf()) {
+    revealAllPdfPages();
+    setChrome(Math.max(0, startIdx), false);
+    // Only jump when deep-linked to a non-first slide
+    if (startIdx > 0 && frames[startIdx]) {
+      requestAnimationFrame(function () {
+        jumpPdf(startIdx, false);
+      });
+    }
+  } else {
+    showDeck(startIdx);
+  }
 })();
 `;
 

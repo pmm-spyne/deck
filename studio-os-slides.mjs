@@ -369,22 +369,38 @@ export const STUDIO_OS_CSS = `
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: clamp(18px, 2.2vh, 26px);
+  gap: clamp(16px, 2vh, 22px);
   width: 100%;
 }
 .cd-studio-provenCopy { min-width: 0; max-width: 40rem; }
-.cd-studio-statStack {
+.cd-studio-statStack,
+.cd-studio-quotes {
+  --cd-proven-gap: 14px;
+  --cd-proven-radius: 12px;
+  --cd-proven-border: 1px solid rgba(205, 148, 255, 0.45);
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--cd-proven-gap);
   width: 100%;
+  margin: 0;
+  flex: 0 0 auto;
+}
+.cd-studio-statStack {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.cd-studio-quotes {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.cd-studio-stat,
+.cd-studio-quote {
+  border-radius: var(--cd-proven-radius);
+  border: var(--cd-proven-border);
+  background: #fff;
+  min-width: 0;
 }
 .cd-studio-stat {
   text-align: center;
-  padding: 16px 10px 14px;
-  border-radius: 10px;
-  background: linear-gradient(#fff 0%, #ecdcfc 100%);
-  border: 1px solid #cd94ff59;
+  padding: 18px 12px 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #f3e9ff 100%);
 }
 .cd-studio-stat b {
   display: block;
@@ -404,22 +420,11 @@ export const STUDIO_OS_CSS = `
   color: #111827;
   line-height: 1.25;
 }
-.cd-studio-quotes {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  width: min(100%, 860px);
-  margin-inline: auto;
-  flex: 0 0 auto;
-}
 .cd-studio-quote {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 18px 18px 16px;
-  border-radius: 16px;
-  border: 1px solid #cd94ff;
-  background: #fff;
+  padding: 18px 20px 16px;
   min-height: 0;
 }
 .cd-studio-quote blockquote {
@@ -600,8 +605,7 @@ export function getStudioOsFrames() {
           <div class="cd-studio-stat" role="listitem"><b>2X</b><span>VDP Engagement</span></div>
           <div class="cd-studio-stat" role="listitem"><b>100%</b><span>Brand Consistency</span></div>
         </div>
-      </div>
-      <div class="cd-studio-quotes">
+        <div class="cd-studio-quotes">
         <article class="cd-studio-quote">
           <blockquote>“Our launch with Spyne was one of the most impressive launches that I've had in 20 years of automotive experience. Our results thus far have been excellent. We are grateful for the partnership!”</blockquote>
           <div class="cd-studio-quoteMeta">
@@ -626,6 +630,7 @@ export function getStudioOsFrames() {
             </span>
           </div>
         </article>
+        </div>
       </div>
       <div class="cd-studio-trust">
         <p class="cd-studio-trusted">Trusted by <strong>4,500+</strong> dealerships worldwide</p>
